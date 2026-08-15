@@ -216,18 +216,32 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     setBusy(true); setNotice("");
     try {
       // A new browser has no site passkey yet. Retrieve only the account's
-      // ciphertext, validate the recovery key locally, then enroll its own
-      // passkey before exposing the decrypted budget.
+      // ciphertext, validate the recovery key locally, then verify a local
+      // passkey or optionally enroll one before exposing the decrypted budget.
       const remote = await fetchEnvelope();
       if (!remote) { setSetup(true); return; }
       const unlocked = await unwrapWithRecovery(recovery, remote.recoverySalt!, remote.recoveryWrappedKey!);
-      await requestPasskey("registration");
+      let addedPasskey = false;
+      try {
+        // An existing passkey on this browser is sufficient. Do not create a
+        // second credential just because the user chose recovery unlock.
+        await requestPasskey("authentication");
+      } catch {
+        // WebAuthn cannot reliably distinguish a missing local credential
+        // from a cancelled chooser. Make adding a credential an explicit,
+        // informed fallback rather than silently registering another one.
+        if (!window.confirm("No existing Cipher Budget passkey was verified on this browser. Create a new passkey for this browser now?")) {
+          throw new Error("Vault recovery was cancelled before a browser passkey was verified.");
+        }
+        await requestPasskey("registration");
+        addedPasskey = true;
+      }
       if (remember) {
         const trustedDevice = await rememberTrustedDevice(unlocked);
         localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
       }
       setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(await decryptVault(remote, unlocked)); setLastActivity(Date.now());
-      toast.current?.show({ severity: "success", summary: "Browser passkey added", detail: remember ? "This trusted browser will also reopen with your Google session." : "Keep your recovery key: it is needed again after this browser is forgotten." });
+      toast.current?.show({ severity: "success", summary: addedPasskey ? "Browser passkey added" : "Vault unlocked", detail: remember ? "This trusted browser will also reopen with your Google session." : addedPasskey ? "Keep your recovery key: it is needed again after this browser is forgotten." : "Your existing browser passkey was verified." });
     } catch (error) { setNotice(error instanceof Error ? error.message : "The recovery key could not unlock this vault."); } finally { setBusy(false); }
   };
   const startSetup = async () => {
@@ -334,7 +348,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   return <main className="app-shell"><Toast ref={toast} />
     <header className="topbar"><div className="brand"><i className="pi pi-lock" /> <span>Cipher Budget</span></div><div className="signed-in-user">{image ? <img src={image} referrerPolicy="no-referrer" alt="" /> : <span className="profile-fallback" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span>}<span>{email}</span></div><div className="topbar-actions"><Button text icon="pi pi-lock" label="Lock" onClick={lockAndForgetBrowser} /><Button text icon="pi pi-sign-out" label="Sign out" onClick={onSignOut} /></div></header>
     {automaticallyUnlocking && <section className="unlock-card"><i className="pi pi-spin pi-spinner unlock-icon" /><h1>Opening your private budget</h1><p>Unlocking this remembered personal browser…</p></section>}
-    {!vault && !setup && !createdRecovery && !automaticallyUnlocking && <section className="unlock-card"><i className="pi pi-shield unlock-icon" /><h1>Unlock your private budget</h1><p>Google confirms your identity. A passkey protects setup and destructive resets; a remembered personal browser can unlock with your Google session.</p>{notice && <p className="error">{notice}</p>}{hasDevice ? <Button text label="Set up a replacement passkey and vault" icon="pi pi-plus" disabled={busy} onClick={() => setSetup(true)} /> : <><Button label="Set up a new vault" icon="pi pi-plus" loading={busy} onClick={() => setSetup(true)} /><div className="recovery-unlock"><h2>Already have a vault?</h2><p>Enter your recovery key to unlock it and add a new passkey for this browser.</p><InputText value={recovery} onChange={(event) => setRecovery(event.target.value)} placeholder="Recovery key" autoComplete="off" /><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser</label></div><Button outlined label="Recover, add passkey, and unlock" icon="pi pi-key" loading={busy} onClick={unlockRecovery} /></div></>}<Button text severity="danger" label="Reset vault with saved passkey" icon="pi pi-refresh" loading={busy} onClick={() => void verifyExistingPasskeyForReset()} /></section>}
+    {!vault && !setup && !createdRecovery && !automaticallyUnlocking && <section className="unlock-card"><i className="pi pi-shield unlock-icon" /><h1>Unlock your private budget</h1><p>Google confirms your identity. A passkey protects setup and destructive resets; a remembered personal browser can unlock with your Google session.</p>{notice && <p className="error">{notice}</p>}{hasDevice ? <Button text label="Set up a replacement passkey and vault" icon="pi pi-plus" disabled={busy} onClick={() => setSetup(true)} /> : <><Button label="Set up a new vault" icon="pi pi-plus" loading={busy} onClick={() => setSetup(true)} /><div className="recovery-unlock"><h2>Already have a vault?</h2><p>Enter your recovery key to unlock it. We’ll verify a passkey already on this browser, or offer to add one when needed.</p><InputText value={recovery} onChange={(event) => setRecovery(event.target.value)} placeholder="Recovery key" autoComplete="off" /><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser</label></div><Button outlined label="Recover and unlock" icon="pi pi-key" loading={busy} onClick={unlockRecovery} /></div></>}<Button text severity="danger" label="Reset vault with saved passkey" icon="pi pi-refresh" loading={busy} onClick={() => void verifyExistingPasskeyForReset()} /></section>}
     {setup && <section className="unlock-card"><i className="pi pi-key unlock-icon" /><h1>Create your encrypted vault</h1><p>Set up a site passkey. It is required alongside Google sign-in to access your financial data.</p><div className="remember-choice"><Checkbox inputId="remember-setup" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-setup">Remember this personal browser</label></div><small>Only select this on a personal, device-encrypted browser profile. It stores an encrypted vault-key envelope locally and still requires your Google session; it never stores budget plaintext or the raw vault key.</small>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create vault with passkey" icon="pi pi-shield" loading={busy} onClick={startSetup} /><Button text label="Back" onClick={() => setSetup(false)} /></div></section>}
     {vault && <BudgetBoard vault={vault} onChange={(next) => { setVault(next); void save(next).catch((error) => setNotice(error instanceof Error ? error.message : "Save failed")); }} />}
     <Dialog visible={Boolean(resetCandidate)} modal closable={!busy} dismissableMask={false} header={resetCandidate?.replaceExisting ? "Permanently replace encrypted vault?" : "Create a new vault?"} className="recovery-dialog" onHide={() => { if (!busy) setResetCandidate(null); }}><p className="danger-copy">{resetCandidate?.replaceExisting ? "You cannot unlock the existing vault with this passkey alone. Continuing permanently deletes its encrypted ciphertext. Even if you find the old recovery key later, the old budget data cannot be recovered." : "No existing encrypted vault was found. Continuing creates a new empty vault with your verified passkey."}</p><p>You will be shown a new recovery key before the new vault can be used.</p>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button severity="danger" label={resetCandidate?.replaceExisting ? "Delete old vault and create new" : "Create new vault"} icon="pi pi-exclamation-triangle" loading={busy} onClick={confirmVaultReset} /><Button text label="Cancel" disabled={busy} onClick={() => setResetCandidate(null)} /></div></Dialog>
