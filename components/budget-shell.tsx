@@ -163,7 +163,10 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const [notice, setNotice] = useState("");
   const [showAbandon, setShowAbandon] = useState(false);
   const [lastActivity, setLastActivity] = useState(Date.now());
+  const [browserReady, setBrowserReady] = useState(false);
+  const [autoUnlocking, setAutoUnlocking] = useState(false);
   const toast = useRef<Toast>(null);
+  const attemptedRememberedUnlock = useRef(false);
   const lock = useCallback((message = "Vault locked. Verify your passkey to continue.") => { setVault(null); setKey(null); setEnvelope(null); setNotice(message); }, []);
 
   useEffect(() => {
@@ -196,6 +199,16 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       setKey(unlocked); setEnvelope(remote); setVault(await decryptVault(remote, unlocked)); setLastActivity(Date.now());
     } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to unlock the vault."); } finally { setBusy(false); }
   };
+  useEffect(() => {
+    setBrowserReady(true);
+  }, []);
+  useEffect(() => {
+    const remembered = deviceEnvelope();
+    if (attemptedRememberedUnlock.current || vault || setup || createdRecovery || remembered?.kind !== "trusted-device") return;
+    attemptedRememberedUnlock.current = true;
+    setAutoUnlocking(true);
+    void unlockRemembered().finally(() => setAutoUnlocking(false));
+  }, [createdRecovery, setup, unlockRemembered, vault]);
   const unlockRecovery = async () => {
     setBusy(true); setNotice("");
     try {
@@ -301,26 +314,27 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       setBusy(false);
     }
   };
-  const forgetBrowser = () => {
-    if (!window.confirm("Forget this browser? Its remembered encrypted vault envelope will be removed from this device.")) return;
+  const lockAndForgetBrowser = () => {
     localStorage.removeItem(DEVICE_KEY);
     void forgetTrustedDeviceKey();
-    toast.current?.show({ severity: "info", summary: "Browser forgotten", detail: "This browser now requires your recovery key after a restart." });
+    lock("Vault locked and this browser has been forgotten.");
   };
-  const rememberedDevice = typeof window !== "undefined" ? deviceEnvelope() : null;
+  const rememberedDevice = browserReady ? deviceEnvelope() : null;
   const hasDevice = Boolean(rememberedDevice);
+  const automaticallyUnlocking = Boolean(!browserReady || autoUnlocking || (rememberedDevice?.kind === "trusted-device" && !vault && !setup && !createdRecovery && !attemptedRememberedUnlock.current));
 
   return <main className="app-shell"><Toast ref={toast} />
-    <header className="topbar"><div className="brand"><i className="pi pi-lock" /> <span>Cipher Budget</span></div><div className="signed-in-user">{image ? <img src={image} referrerPolicy="no-referrer" alt="" /> : <span className="profile-fallback" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span>}<span>{email}</span></div><div className="topbar-actions"><Button text icon="pi pi-lock" label="Lock" onClick={() => lock("Vault locked.")} /><Button text icon="pi pi-sign-out" label="Sign out" onClick={onSignOut} /></div></header>
-    {!vault && !setup && !createdRecovery && <section className="unlock-card"><i className="pi pi-shield unlock-icon" /><h1>Unlock your private budget</h1><p>Google confirms your identity. A passkey protects setup and destructive resets; a remembered personal browser can unlock with your Google session.</p>{notice && <p className="error">{notice}</p>}{hasDevice ? <><Button label={busy ? "Unlocking…" : rememberedDevice?.kind === "trusted-device" ? "Unlock remembered browser" : "Unlock with passkey"} icon={rememberedDevice?.kind === "trusted-device" ? "pi pi-lock-open" : "pi pi-key"} loading={busy} onClick={unlockRemembered} /><Button text label="Set up a replacement passkey and vault" icon="pi pi-plus" disabled={busy} onClick={() => setSetup(true)} /></> : <><Button label="Set up a new vault" icon="pi pi-plus" loading={busy} onClick={() => setSetup(true)} /><div className="recovery-unlock"><h2>Already have a vault?</h2><p>Use your recovery key to add this browser.</p><InputText value={recovery} onChange={(event) => setRecovery(event.target.value)} placeholder="Recovery key" autoComplete="off" /><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser (no passkey on return)</label></div><Button outlined label="Recover and unlock" icon="pi pi-key" loading={busy} onClick={unlockRecovery} /></div></>}<Button text severity="danger" label="Reset vault with saved passkey" icon="pi pi-refresh" loading={busy} onClick={() => void verifyExistingPasskeyForReset()} /></section>}
+    <header className="topbar"><div className="brand"><i className="pi pi-lock" /> <span>Cipher Budget</span></div><div className="signed-in-user">{image ? <img src={image} referrerPolicy="no-referrer" alt="" /> : <span className="profile-fallback" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span>}<span>{email}</span></div><div className="topbar-actions"><Button text icon="pi pi-lock" label="Lock" onClick={lockAndForgetBrowser} /><Button text icon="pi pi-sign-out" label="Sign out" onClick={onSignOut} /></div></header>
+    {automaticallyUnlocking && <section className="unlock-card"><i className="pi pi-spin pi-spinner unlock-icon" /><h1>Opening your private budget</h1><p>Unlocking this remembered personal browser…</p></section>}
+    {!vault && !setup && !createdRecovery && !automaticallyUnlocking && <section className="unlock-card"><i className="pi pi-shield unlock-icon" /><h1>Unlock your private budget</h1><p>Google confirms your identity. A passkey protects setup and destructive resets; a remembered personal browser can unlock with your Google session.</p>{notice && <p className="error">{notice}</p>}{hasDevice ? <Button text label="Set up a replacement passkey and vault" icon="pi pi-plus" disabled={busy} onClick={() => setSetup(true)} /> : <><Button label="Set up a new vault" icon="pi pi-plus" loading={busy} onClick={() => setSetup(true)} /><div className="recovery-unlock"><h2>Already have a vault?</h2><p>Use your recovery key to add this browser.</p><InputText value={recovery} onChange={(event) => setRecovery(event.target.value)} placeholder="Recovery key" autoComplete="off" /><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser (no passkey on return)</label></div><Button outlined label="Recover and unlock" icon="pi pi-key" loading={busy} onClick={unlockRecovery} /></div></>}<Button text severity="danger" label="Reset vault with saved passkey" icon="pi pi-refresh" loading={busy} onClick={() => void verifyExistingPasskeyForReset()} /></section>}
     {setup && <section className="unlock-card"><i className="pi pi-key unlock-icon" /><h1>Create your encrypted vault</h1><p>Set up a site passkey. It is required alongside Google sign-in to access your financial data.</p><div className="remember-choice"><Checkbox inputId="remember-setup" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-setup">Remember this personal browser (no passkey on return)</label></div><small>Only select this on a personal, device-encrypted browser profile. It stores an encrypted vault-key envelope locally and still requires your Google session; it never stores budget plaintext or the raw vault key.</small>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create vault with passkey" icon="pi pi-shield" loading={busy} onClick={startSetup} /><Button text label="Back" onClick={() => setSetup(false)} /></div></section>}
-    {vault && <BudgetBoard vault={vault} onChange={(next) => { setVault(next); void save(next).catch((error) => setNotice(error instanceof Error ? error.message : "Save failed")); }} onForget={forgetBrowser} />}
+    {vault && <BudgetBoard vault={vault} onChange={(next) => { setVault(next); void save(next).catch((error) => setNotice(error instanceof Error ? error.message : "Save failed")); }} />}
     <Dialog visible={Boolean(resetCandidate)} modal closable={!busy} dismissableMask={false} header={resetCandidate?.replaceExisting ? "Permanently replace encrypted vault?" : "Create a new vault?"} className="recovery-dialog" onHide={() => { if (!busy) setResetCandidate(null); }}><p className="danger-copy">{resetCandidate?.replaceExisting ? "You cannot unlock the existing vault with this passkey alone. Continuing permanently deletes its encrypted ciphertext. Even if you find the old recovery key later, the old budget data cannot be recovered." : "No existing encrypted vault was found. Continuing creates a new empty vault with your verified passkey."}</p><p>You will be shown a new recovery key before the new vault can be used.</p>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button severity="danger" label={resetCandidate?.replaceExisting ? "Delete old vault and create new" : "Create new vault"} icon="pi pi-exclamation-triangle" loading={busy} onClick={confirmVaultReset} /><Button text label="Cancel" disabled={busy} onClick={() => setResetCandidate(null)} /></div></Dialog>
     <Dialog visible={Boolean(createdRecovery)} modal closable={false} dismissableMask={false} header="Record your recovery key" className="recovery-dialog" onHide={() => setShowAbandon(true)}><p className="danger-copy">This recovery key is the only backup if you lose your passkey. If you do not record it, you WILL permanently lose access to all your budget data. After this screen is closed, it is never accessible or recoverable by anyone again.</p><code className="recovery-code">{createdRecovery}</code><div className="button-row"><Button text label="Copy" icon="pi pi-copy" onClick={() => navigator.clipboard.writeText(createdRecovery)} /><Button text label="Print" icon="pi pi-print" onClick={() => window.print()} /><Button text label="Download" icon="pi pi-download" onClick={() => { const blob = new Blob(["Cipher Budget recovery key\n\n" + createdRecovery + "\n"], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "cipher-budget-recovery-key.txt"; link.click(); URL.revokeObjectURL(link.href); }} /></div><p>Store it in a password manager or another secure offline location. Do not share it or keep it in unsecured notes.</p><label htmlFor="confirm-recovery">Enter the complete recovery key to verify you recorded it.</label><InputText id="confirm-recovery" value={confirmRecovery} onChange={(event) => setConfirmRecovery(event.target.value)} autoComplete="off" className="full-width" />{notice && <p className="error">{notice}</p>}<Button label="I recorded it — secure my vault" icon="pi pi-check" loading={busy} disabled={busy} onClick={confirmCeremony} /><Button text severity="secondary" label="I need more time" disabled={busy} onClick={() => setShowAbandon(true)} /><Dialog visible={showAbandon} modal header="Leave vault setup?" onHide={() => setShowAbandon(false)}><p>If you leave without recording and verifying this key, all newly created encrypted vault data will be discarded. You will need to set up a new vault later.</p><Button severity="danger" label="Discard unverified vault" onClick={() => { setCreatedRecovery(""); setConfirmRecovery(""); setVault(null); setKey(null); setEnvelope(null); setShowAbandon(false); setNotice("Vault setup was abandoned. No financial data was saved."); }} /></Dialog></Dialog>
   </main>;
 }
 
-function BudgetBoard({ vault, onChange, onForget }: { vault: BudgetVault; onChange: (vault: BudgetVault) => void; onForget: () => void }) {
+function BudgetBoard({ vault, onChange }: { vault: BudgetVault; onChange: (vault: BudgetVault) => void }) {
   const [activeId, setActiveId] = useState(vault.periods.at(-1)?.id ?? "");
   const [firstStart, setFirstStart] = useState(todayISO());
   const [editStart, setEditStart] = useState("");
@@ -347,7 +361,7 @@ function BudgetBoard({ vault, onChange, onForget }: { vault: BudgetVault; onChan
     <div className="summary-grid"><Summary label="Total income" value={money(values.income)} icon="pi pi-wallet" /><Summary label="Total expenses" value={money(values.expenses)} icon="pi pi-credit-card" /><Summary label="Remaining balance" value={money(values.remaining)} icon="pi pi-chart-line" tone={values.remaining < 0 ? "negative" : "positive"} /></div>
     <IncomePanel period={period} onChange={updatePeriod} />
     <div className="bucket-grid">{(Object.keys(bucketMeta) as Bucket[]).map((bucket) => <BucketPanel key={bucket} bucket={bucket} period={period} income={values.income} spent={values.byBucket(bucket)} onChange={updatePeriod} />)}</div>
-    <section className="security-settings"><div><i className="pi pi-shield" /><span><strong>Encrypted vault is unlocked</strong><small>Financial data is decrypted only in this browser until it locks.</small></span></div><Button outlined severity="secondary" label="Forget this browser" icon="pi pi-trash" onClick={onForget} /></section>
+    <section className="security-settings"><div><i className="pi pi-shield" /><span><strong>Encrypted vault is unlocked</strong><small>Financial data is decrypted only in this browser until it locks.</small></span></div></section>
     <Dialog visible={dialog === "edit"} modal header="Edit pay period" className="compact-dialog" onHide={() => setDialog(null)}><p>Changing the start date automatically keeps this pay period 14 days long.</p><label className="field-label" htmlFor="edit-period-start">Start date</label><input className="native-input" id="edit-period-start" type="date" value={editStart} onChange={(event) => setEditStart(event.target.value)} /><div className="dialog-actions"><Button label="Save period" icon="pi pi-check" onClick={() => { if (editStart) updatePeriod({ ...period, startDate: editStart, endDate: addDays(editStart, 13) }); setDialog(null); }} /><Button text label="Cancel" onClick={() => setDialog(null)} /><Button outlined severity="danger" label="Delete period" icon="pi pi-trash" onClick={deletePeriod} /></div></Dialog>
   </section>;
 }
