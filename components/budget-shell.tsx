@@ -12,6 +12,7 @@ import { InputText } from "primereact/inputtext";
 import { ProgressBar } from "primereact/progressbar";
 import { Toast } from "primereact/toast";
 import { addDays, bucketMeta, clonePeriod, createEmptyVault, money, newId, todayISO, totals, type BudgetPeriod, type Bucket, type BudgetVault, type ExpenseEntry, type IncomeEntry } from "@/lib/budget/types";
+import { budgetWorkbook, importBudgetWorkbook } from "@/lib/budget/spreadsheet";
 import { decryptVault, encryptVault, exportVaultKey, generateVaultKey, importVaultKey, randomBytes, recoveryKey, unwrapWithPasskey, unwrapWithRecovery, wrapWithRecovery, type Envelope } from "@/lib/crypto/vault";
 
 type PasskeyDeviceEnvelope = { kind?: "passkey"; salt: string; wrappedKey: string; deviceId: string };
@@ -414,6 +415,9 @@ function BudgetBoard({ vault, onChange }: { vault: BudgetVault; onChange: (vault
   const [firstStart, setFirstStart] = useState(todayISO());
   const [editStart, setEditStart] = useState("");
   const [dialog, setDialog] = useState<"edit" | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferStatus, setTransferStatus] = useState("");
+  const importInput = useRef<HTMLInputElement>(null);
   const period = vault.periods.find((item) => item.id === activeId) ?? vault.periods.at(-1);
   useEffect(() => { if (!vault.periods.some((item) => item.id === activeId)) setActiveId(vault.periods.at(-1)?.id ?? ""); }, [activeId, vault.periods]);
   const updatePeriod = (next: BudgetPeriod) => onChange({ ...vault, periods: vault.periods.map((item) => item.id === next.id ? next : item) });
@@ -431,11 +435,40 @@ function BudgetBoard({ vault, onChange }: { vault: BudgetVault; onChange: (vault
     const remaining = vault.periods.filter((item) => item.id !== period.id);
     onChange({ ...vault, periods: remaining }); setActiveId(remaining[Math.max(0, index - 1)]?.id ?? ""); setDialog(null);
   };
+  const exportSpreadsheet = async () => {
+    setTransferBusy(true); setTransferStatus("");
+    try {
+      const bytes = await budgetWorkbook(vault);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = "cipher-budget-export.xlsx"; link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setTransferStatus("Spreadsheet exported. It contains readable financial data—store it securely.");
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : "Could not export the spreadsheet.");
+    } finally { setTransferBusy(false); }
+  };
+  const importSpreadsheet = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!window.confirm("Importing replaces all current budget periods and entries with this spreadsheet. Continue?")) return;
+    setTransferBusy(true); setTransferStatus("");
+    try {
+      const imported = await importBudgetWorkbook(file);
+      onChange(imported);
+      setActiveId(imported.periods.at(-1)?.id ?? "");
+      setTransferStatus("Spreadsheet imported. Your encrypted vault is saving the imported budget.");
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : "Could not import the spreadsheet.");
+    } finally { setTransferBusy(false); }
+  };
   return <section className="budget-board">
     <div className="period-toolbar"><div><p className="eyebrow">PAY PERIOD</p><h1>{periodLabel(period)}</h1></div><div className="period-actions"><select aria-label="Choose pay period" value={period.id} onChange={(event) => setActiveId(event.target.value)}>{vault.periods.map((item) => <option key={item.id} value={item.id}>{periodLabel(item)}</option>)}</select><Button label="New period" icon="pi pi-plus" onClick={addPeriod} /><Button className="manage-period" text rounded aria-label="Edit pay period" tooltip="Edit pay period" tooltipOptions={{ position: "top" }} icon="pi pi-pencil" onClick={() => { setEditStart(period.startDate); setDialog("edit"); }} /></div></div>
     <div className="summary-grid"><Summary label="Total income" value={money(values.income)} icon="pi pi-wallet" /><Summary label="Total expenses" value={money(values.expenses)} icon="pi pi-credit-card" /><Summary label="Remaining balance" value={money(values.remaining)} icon="pi pi-chart-line" tone={values.remaining < 0 ? "negative" : "positive"} /></div>
     <IncomePanel period={period} onChange={updatePeriod} />
     <div className="bucket-grid">{(Object.keys(bucketMeta) as Bucket[]).map((bucket) => <BucketPanel key={bucket} bucket={bucket} period={period} income={values.income} spent={values.byBucket(bucket)} onChange={updatePeriod} />)}</div>
+    <section className="data-tools"><div><i className="pi pi-file-excel" /><span><strong>Spreadsheet backup & import</strong><small>Exports are readable .xlsx files and are not encrypted. Import only a Cipher Budget workbook you trust; importing replaces this vault’s current budget data.</small></span></div><div className="data-tool-actions"><Button outlined label="Export spreadsheet" icon="pi pi-download" loading={transferBusy} onClick={() => void exportSpreadsheet()} /><Button outlined label="Import spreadsheet" icon="pi pi-upload" disabled={transferBusy} onClick={() => importInput.current?.click()} /><input ref={importInput} className="visually-hidden" type="file" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx" onChange={(event) => void importSpreadsheet(event)} /></div>{transferStatus && <p className="transfer-status" role="status">{transferStatus}</p>}</section>
     <section className="security-settings"><div><i className="pi pi-shield" /><span><strong>Encrypted vault is unlocked</strong><small>Financial data is decrypted only in this browser until it locks.</small></span></div></section>
     <Dialog visible={dialog === "edit"} modal header="Edit pay period" className="compact-dialog" onHide={() => setDialog(null)}><p>Changing the start date automatically keeps this pay period 14 days long.</p><label className="field-label" htmlFor="edit-period-start">Start date</label><input className="native-input" id="edit-period-start" type="date" value={editStart} onChange={(event) => setEditStart(event.target.value)} /><div className="dialog-actions"><Button label="Save period" icon="pi pi-check" onClick={() => { if (editStart) updatePeriod({ ...period, startDate: editStart, endDate: addDays(editStart, 13) }); setDialog(null); }} /><Button text label="Cancel" onClick={() => setDialog(null)} /><Button outlined severity="danger" label="Delete period" icon="pi pi-trash" onClick={deletePeriod} /></div></Dialog>
   </section>;
@@ -463,7 +496,7 @@ function BucketPanel({ bucket, period, income, spent, onChange }: { bucket: Buck
     onChange({ ...period, expenses: editing ? period.expenses.map((item) => item.id === editing.id ? entry : item) : [...period.expenses, entry] }); clear();
   };
   const nameId = bucket + "-expense-name"; const amountId = bucket + "-expense-amount"; const dateId = bucket + "-expense-date";
-  return <Card className={"bucket-card " + bucket}><div className="bucket-header"><div><p>{bucketMeta[bucket].label}</p><strong>{money(remaining)} <small>remaining</small></strong></div><label>{period.targetPercentages[bucket]}% target<input type="range" min="0" max="100" value={period.targetPercentages[bucket]} onChange={(event) => onChange({ ...period, targetPercentages: { ...period.targetPercentages, [bucket]: Number(event.target.value) } })} /></label></div><ProgressBar value={target ? Math.min(100, Math.round(spent / target * 100)) : 0} showValue={false} /><p className={remaining < 0 ? "over" : "muted"}>{money(spent)} spent of {money(target)}</p><div className="entry-form expense-form"><div className="field"><label htmlFor={nameId}>Expense name</label><InputText id={nameId} value={name} invalid={Boolean(error && !name.trim())} onChange={(event) => { setName(event.target.value); setError(""); }} placeholder={expenseHints[bucket]} /></div><div className="expense-details"><div className="field"><label htmlFor={amountId}>Amount</label><InputNumber inputId={amountId} value={amount} invalid={Boolean(error && (!amount || amount <= 0))} onValueChange={(event) => { setAmount(event.value ?? null); setError(""); }} mode="currency" currency="USD" locale="en-US" placeholder="$0.00" /></div><div className="field"><label htmlFor={dateId}>Date <span className="optional-label">(optional)</span></label><input className="native-input" id={dateId} type="date" value={date} onChange={(event) => { setDate(event.target.value); setError(""); }} /></div></div><div className="form-buttons"><Button label={editing ? "Save expense" : "Add expense"} icon={editing ? "pi pi-check" : "pi pi-plus"} onClick={submit} />{editing && <><Button outlined label="Cancel" onClick={clear} /><Button outlined severity="danger" label="Delete expense" icon="pi pi-trash" onClick={() => { if (!window.confirm("Delete this expense? This cannot be undone.")) return; onChange({ ...period, expenses: period.expenses.filter((item) => item.id !== editing.id) }); clear(); }} /></>}</div></div>{error && <p className="form-error" role="alert">{error}</p>}<EntryList entries={expenses} onEdit={(item) => { const expense = item as ExpenseEntry; setEditing(expense); setName(expense.name); setAmount(expense.amountCents / 100); setDate(expense.date ?? ""); setError(""); }} onToggle={(id) => onChange({ ...period, expenses: period.expenses.map((item) => item.id === id ? { ...item, recurring: !item.recurring } : item) })} /></Card>;
+  return <Card className={"bucket-card " + bucket}><div className="bucket-header"><div><p>{bucketMeta[bucket].label}</p><strong>{money(remaining)} <small>remaining</small></strong></div><div className="target-input"><label htmlFor={bucket + "-target"}>Target</label><InputNumber inputId={bucket + "-target"} value={period.targetPercentages[bucket]} min={0} max={100} maxFractionDigits={2} useGrouping={false} suffix="%" onValueChange={(event) => onChange({ ...period, targetPercentages: { ...period.targetPercentages, [bucket]: Math.min(100, Math.max(0, event.value ?? 0)) } })} /></div></div><ProgressBar value={target ? Math.min(100, Math.round(spent / target * 100)) : 0} showValue={false} /><p className={remaining < 0 ? "over" : "muted"}>{money(spent)} spent of {money(target)}</p><div className="entry-form expense-form"><div className="field"><label htmlFor={nameId}>Expense name</label><InputText id={nameId} value={name} invalid={Boolean(error && !name.trim())} onChange={(event) => { setName(event.target.value); setError(""); }} placeholder={expenseHints[bucket]} /></div><div className="expense-details"><div className="field"><label htmlFor={amountId}>Amount</label><InputNumber inputId={amountId} value={amount} invalid={Boolean(error && (!amount || amount <= 0))} onValueChange={(event) => { setAmount(event.value ?? null); setError(""); }} mode="currency" currency="USD" locale="en-US" placeholder="$0.00" /></div><div className="field expense-date-field"><label htmlFor={dateId}>Date <span className="optional-label">(optional)</span></label><input className="native-input" id={dateId} type="date" value={date} onChange={(event) => { setDate(event.target.value); setError(""); }} /></div></div><div className="form-buttons"><Button label={editing ? "Save expense" : "Add expense"} icon={editing ? "pi pi-check" : "pi pi-plus"} onClick={submit} />{editing && <><Button outlined label="Cancel" onClick={clear} /><Button outlined severity="danger" label="Delete expense" icon="pi pi-trash" onClick={() => { if (!window.confirm("Delete this expense? This cannot be undone.")) return; onChange({ ...period, expenses: period.expenses.filter((item) => item.id !== editing.id) }); clear(); }} /></>}</div></div>{error && <p className="form-error" role="alert">{error}</p>}<EntryList entries={expenses} onEdit={(item) => { const expense = item as ExpenseEntry; setEditing(expense); setName(expense.name); setAmount(expense.amountCents / 100); setDate(expense.date ?? ""); setError(""); }} onToggle={(id) => onChange({ ...period, expenses: period.expenses.map((item) => item.id === id ? { ...item, recurring: !item.recurring } : item) })} /></Card>;
 }
 
 function EntryList({ entries, onEdit, onToggle }: { entries: ListEntry[]; onEdit: (item: ListEntry) => void; onToggle?: (id: string) => void }) {

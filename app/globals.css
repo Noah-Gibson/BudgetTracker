@@ -77,8 +77,10 @@ button { touch-action: manipulation; }
 .bucket-header p { margin: 0 0 .35rem; color: var(--muted); font-size: .83rem; }
 .bucket-header strong { display: block; overflow-wrap: anywhere; font-size: 1.08rem; }
 .bucket-header strong small { color: var(--muted); font-size: .74rem; font-weight: 500; }
-.bucket-header label { flex: 0 1 6.25rem; color: var(--muted); font-size: .74rem; text-align: right; white-space: nowrap; }
-.bucket-header input { display: block; width: 100%; margin-top: .3rem; accent-color: var(--teal); }
+.target-input { flex: 0 0 5.75rem; min-width: 0; }
+.target-input label { display: block; color: var(--muted); font-size: .74rem; text-align: right; white-space: nowrap; }
+.target-input .p-inputnumber, .target-input .p-inputnumber-input { width: 100%; }
+.target-input .p-inputnumber-input { margin-top: .3rem; padding: .35rem .45rem; text-align: right; }
 .bucket-card .p-progressbar { height: .5rem; margin: 1rem 0 .35rem; }
 .bucket-card.goals .p-progressbar-value { background: #566ec5; }
 .bucket-card.wants .p-progressbar-value { background: var(--gold); }
@@ -105,6 +107,15 @@ button { touch-action: manipulation; }
 .security-settings strong, .security-settings small { overflow-wrap: anywhere; }
 .security-settings small { color: var(--muted); }
 .security-settings .p-button { width: 100%; justify-content: center; }
+.data-tools { display: grid; gap: .9rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.data-tools > div:first-child { display: flex; min-width: 0; align-items: flex-start; gap: .7rem; }
+.data-tools > div:first-child > i { flex: 0 0 auto; padding-top: .1rem; color: var(--teal); font-size: 1.25rem; }
+.data-tools span { display: grid; min-width: 0; gap: .15rem; }
+.data-tools small { color: var(--muted); line-height: 1.45; }
+.data-tool-actions { display: flex; flex-wrap: wrap; gap: .55rem; }
+.data-tool-actions .p-button { flex: 1 1 12rem; justify-content: center; }
+.transfer-status { margin: 0; color: var(--muted); font-size: .85rem; line-height: 1.45; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 .empty-state { display: grid; justify-items: stretch; width: min(calc(100% - 2rem), 640px); gap: 1rem; margin: 3rem auto; padding: 1.5rem; text-align: center; }
 .empty-state h1 { margin: 0; font-size: clamp(2rem, 9vw, 2.6rem); }
@@ -129,6 +140,10 @@ button { touch-action: manipulation; }
   .security-settings { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .security-settings > div { align-items: center; }
   .security-settings .p-button { width: auto; }
+  .data-tools { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .data-tool-actions { flex-wrap: nowrap; }
+  .data-tool-actions .p-button { flex: 0 0 auto; }
+  .data-tools .transfer-status { grid-column: 1 / -1; }
 }
 
 @media (max-width: 639px) {
@@ -183,7 +198,7 @@ button { touch-action: manipulation; }
 .native-input.p-invalid { border-color: var(--rose); }
 .expense-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
 .expense-details > .field { min-width: 0; }
-.native-input[type="date"] { box-sizing: border-box; inline-size: 100%; max-inline-size: 100%; min-inline-size: 0; }
+.native-input[type="date"] { display: block; box-sizing: border-box; inline-size: 100%; max-inline-size: 100%; min-inline-size: 0; }
 .expense-form { margin-top: 1.25rem; }
 .optional-label { color: var(--muted); font-size: .75rem; font-weight: 500; }
 .form-buttons { display: flex; flex-wrap: wrap; gap: .55rem; }
@@ -232,4 +247,24 @@ button { touch-action: manipulation; }
      entire form one equal inset so every field has matching left/right space. */
   .expense-form { padding-inline: .65rem; }
   .expense-details { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: 100%; padding-inline-end: 0; }
+}
+
+/* Safari on iOS gives native date inputs a large intrinsic minimum width for
+   its formatted date and picker control. Keep the native picker, but prevent
+   that intrinsic size from expanding beyond the expense field. */
+@supports (-webkit-touch-callout: none) {
+  .expense-date-field { overflow: hidden; }
+  .expense-date-field .native-input[type="date"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .expense-date-field .native-input[type="date"]::-webkit-datetime-edit,
+  .expense-date-field .native-input[type="date"]::-webkit-date-and-time-value {
+    min-width: 0;
+    padding: 0;
+    text-align: left;
+  }
 }
