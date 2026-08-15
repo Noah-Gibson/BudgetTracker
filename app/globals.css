@@ -228,6 +228,8 @@ button { touch-action: manipulation; }
 
 @media (max-width: 480px) {
   /* iOS date inputs have a large intrinsic width. Stack these controls on
-     narrow cards so the picker never extends beyond the right edge. */
-  .expense-details { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: 100%; padding-inline-end: .65rem; }
+     narrow cards so the picker never extends beyond the right edge. Give the
+     entire form one equal inset so every field has matching left/right space. */
+  .expense-form { padding-inline: .65rem; }
+  .expense-details { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: 100%; padding-inline-end: 0; }
 }

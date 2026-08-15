@@ -178,13 +178,18 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     pendingSave.current = null; activeKey.current = null; activeEnvelope.current = null;
     setVault(null); setKey(null); setEnvelope(null); setNotice(message);
   }, []);
+  const lockAndForgetBrowser = useCallback((message = "Vault locked and this browser has been forgotten.") => {
+    localStorage.removeItem(DEVICE_KEY);
+    void forgetTrustedDeviceKey();
+    lock(message);
+  }, [lock]);
 
   useEffect(() => {
     const activity = () => setLastActivity(Date.now());
     window.addEventListener("pointerdown", activity); window.addEventListener("keydown", activity);
-    const timer = window.setInterval(() => { if (vault && Date.now() - lastActivity > 15 * 60_000) lock("Vault locked after 15 minutes of inactivity."); }, 30_000);
+    const timer = window.setInterval(() => { if (vault && Date.now() - lastActivity > 15 * 60_000) lockAndForgetBrowser("Vault locked after 15 minutes of inactivity. This browser was forgotten."); }, 30_000);
     return () => { window.removeEventListener("pointerdown", activity); window.removeEventListener("keydown", activity); window.clearInterval(timer); };
-  }, [lastActivity, lock, vault]);
+  }, [lastActivity, lockAndForgetBrowser, vault]);
 
   const fetchEnvelope = async () => {
     const response = await fetch("/api/vault", { cache: "no-store" });
@@ -373,11 +378,6 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       setBusy(false);
     }
   };
-  const lockAndForgetBrowser = () => {
-    localStorage.removeItem(DEVICE_KEY);
-    void forgetTrustedDeviceKey();
-    lock("Vault locked and this browser has been forgotten.");
-  };
   const saveRecoveryKey = async () => {
     const text = "Cipher Budget recovery key\n\n" + createdRecovery + "\n";
     // Safari on iOS opens Blob downloads in a separate Downloads view. Leaving
@@ -399,7 +399,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const automaticallyUnlocking = Boolean(!browserReady || autoUnlocking || (rememberedDevice?.kind === "trusted-device" && !vault && !setup && !createdRecovery && !attemptedRememberedUnlock.current));
 
   return <main className="app-shell"><Toast ref={toast} />
-    <header className="topbar"><div className="brand"><i className="pi pi-lock" /> <span>Cipher Budget</span></div><div className="signed-in-user">{image ? <img src={image} referrerPolicy="no-referrer" alt="" /> : <span className="profile-fallback" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span>}<span>{email}</span></div><div className="topbar-actions"><Button text icon="pi pi-lock" label="Lock" onClick={lockAndForgetBrowser} /><Button text icon="pi pi-sign-out" label="Sign out" onClick={onSignOut} /></div></header>
+    <header className="topbar"><div className="brand"><i className="pi pi-lock" /> <span>Cipher Budget</span></div><div className="signed-in-user">{image ? <img src={image} referrerPolicy="no-referrer" alt="" /> : <span className="profile-fallback" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span>}<span>{email}</span></div><div className="topbar-actions"><Button text icon="pi pi-lock" label="Lock" onClick={() => lockAndForgetBrowser()} /><Button text icon="pi pi-sign-out" label="Sign out" onClick={onSignOut} /></div></header>
     {automaticallyUnlocking && <section className="unlock-card"><i className="pi pi-spin pi-spinner unlock-icon" /><h1>Opening your private budget</h1><p>Unlocking this remembered personal browser…</p></section>}
     {!vault && !setup && !createdRecovery && !automaticallyUnlocking && <section className="unlock-card"><i className="pi pi-shield unlock-icon" /><h1>Unlock your private budget</h1><p>Google confirms your identity. A passkey protects setup and destructive resets; a remembered personal browser can unlock with your Google session.</p>{notice && <p className="error">{notice}</p>}{hasDevice ? <Button text label="Set up a replacement passkey and vault" icon="pi pi-plus" disabled={busy} onClick={() => setSetup(true)} /> : <><Button label="Set up a new vault" icon="pi pi-plus" loading={busy} onClick={() => setSetup(true)} /><div className="recovery-unlock"><h2>Already have a vault?</h2><p>Enter your recovery key to unlock it. We’ll verify a passkey already on this browser, or offer to add one when needed.</p><InputText value={recovery} onChange={(event) => setRecovery(event.target.value)} placeholder="Recovery key" autoComplete="off" /><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser</label></div><Button outlined label="Recover and unlock" icon="pi pi-key" loading={busy} onClick={unlockRecovery} /></div></>}<Button text severity="danger" label="Reset vault with saved passkey" icon="pi pi-refresh" loading={busy} onClick={() => void verifyExistingPasskeyForReset()} /></section>}
     {setup && <section className="unlock-card"><i className="pi pi-key unlock-icon" /><h1>Create your encrypted vault</h1><p>Set up a site passkey. It is required alongside Google sign-in to access your financial data.</p><div className="remember-choice"><Checkbox inputId="remember-setup" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-setup">Remember this personal browser</label></div><small>Only select this on a personal, device-encrypted browser profile. It stores an encrypted vault-key envelope locally and still requires your Google session; it never stores budget plaintext or the raw vault key.</small>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create vault with passkey" icon="pi pi-shield" loading={busy} onClick={startSetup} /><Button text label="Back" onClick={() => setSetup(false)} /></div></section>}
