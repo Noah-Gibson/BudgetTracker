@@ -15,8 +15,12 @@ button { touch-action: manipulation; }
 .landing-copy, .security-panel { min-width: 0; }
 .landing-copy { max-width: 680px; }
 .eyebrow { margin: 0 0 .5rem; color: var(--teal); font-size: .74rem; font-weight: 800; letter-spacing: .12em; }
-.pay-month-info { display: inline-grid; place-items: center; width: 1.15rem; height: 1.15rem; margin-left: .2rem; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; font: inherit; cursor: help; vertical-align: middle; }
-.pay-month-info:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.pay-month-label { display: grid; justify-items: start; gap: .45rem; }
+.pay-month-label .eyebrow { margin: 0; }
+.pay-month-info { display: inline-grid; width: 1.65rem; height: 1.65rem; place-items: center; margin-left: .28rem; padding: 0; border: 1px solid #b7d4d0; border-radius: 50%; background: #eff8f6; color: var(--teal-dark); font: inherit; cursor: pointer; vertical-align: middle; }
+.pay-month-info:hover, .pay-month-info[aria-expanded="true"] { border-color: var(--teal); background: #dff1ed; }
+.pay-month-info:focus-visible { outline: 3px solid #79bbb1; outline-offset: 2px; }
+.pay-month-explainer { max-width: 34rem; margin: 0; padding: .65rem .8rem; border-left: 3px solid var(--teal); border-radius: 0 8px 8px 0; background: #edf7f5; color: var(--teal-dark); font-size: .88rem; font-weight: 600; letter-spacing: normal; line-height: 1.45; }
 .landing h1, .unlock-card h1, .period-toolbar h1, .empty-state h1 { margin: 0 0 1.15rem; font-size: clamp(2rem, 10vw, 4.2rem); line-height: 1.05; letter-spacing: -.05em; }
 .landing-copy > p:not(.eyebrow) { margin: 0 0 1.5rem; color: var(--muted); font-size: 1.08rem; line-height: 1.65; }
 .security-panel { padding: 1.5rem; border-radius: 22px; background: var(--teal); color: #ecfffc; box-shadow: var(--shadow); }

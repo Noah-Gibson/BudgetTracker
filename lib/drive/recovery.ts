@@ -34,9 +34,13 @@ async function loadGoogleIdentity() {
   return window.google;
 }
 
-async function requestDriveToken() {
-  const google = await loadGoogleIdentity();
-  return await new Promise<string>((resolve, reject) => {
+function requestDriveToken() {
+  // Safari's installed web apps only permit Google to open its authorization
+  // window while the originating tap is still active. Do not await script
+  // loading here: requestAccessToken must run in the same call stack.
+  const google = window.google;
+  if (!google?.accounts.oauth2) return Promise.reject(packageError("Google Drive is still getting ready. Wait a moment, then tap the button again."));
+  return new Promise<string>((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
       client_id: clientId(), scope: DRIVE_SCOPE,
       callback: (response) => {
@@ -49,19 +53,24 @@ async function requestDriveToken() {
         }
         resolve(response.access_token);
       },
-      error_callback: (error) => reject(packageError(error.message ?? "Google Drive access was cancelled."))
+      error_callback: (error) => reject(packageError(error.type === "popup_failed_to_open" ? "Safari could not open Google’s authorization window. Open Cipher Budget in Safari instead of its Home Screen web app, then try Google Drive recovery again." : error.message ?? "Google Drive access was cancelled."))
     });
     client.requestAccessToken({ prompt: "consent" });
   });
 }
 
-async function driveToken() {
+function driveToken() {
   // Google permits the token chooser only from a direct user action. Reuse a
   // pending request so a double-click or overlapping backup operation cannot
   // open a second popup and leave one of the requests without a token.
   if (!pendingTokenRequest) pendingTokenRequest = requestDriveToken().finally(() => { pendingTokenRequest = null; });
   return pendingTokenRequest;
 }
+
+/** Preloads GIS before a user taps a Drive action, preserving Safari activation. */
+export function prepareDriveRecoveryAuthorization() { return loadGoogleIdentity(); }
+/** Starts Google authorization synchronously in the calling button handler. */
+export function beginDriveRecoveryAuthorization() { return driveToken(); }
 
 type DriveApiError = { error?: { message?: string; errors?: { reason?: string }[] } };
 async function driveFailure(response: Response) {
@@ -119,8 +128,8 @@ function multipart(metadata: object, content: string) {
 }
 
 /** Writes and immediately reads a small, non-budget recovery package. No application API is involved. */
-export async function saveDriveRecoveryBackup(vaultId: string, recoveryKey: string) {
-  const token = await driveToken();
+export async function saveDriveRecoveryBackup(vaultId: string, recoveryKey: string, authorization: Promise<string> = driveToken()) {
+  const token = await authorization;
   const backup: DriveRecoveryPackage = { format: 1, vaultId, recoveryKey, createdAt: new Date().toISOString() };
   const existing = await findBackup(token);
   // A file's appDataFolder parent is assigned only when it is created. Drive

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
 describe("pay-month budgets", () => {
-  it("creates a 28-day pay month with one income list and cycle-wide totals", () => {
+  it("creates a 28-day pay-month with one income list and cycle-wide totals", () => {
     const month = clonePayMonth(undefined, "2026-08-14", createEmptyVault().settings.defaultTargets, []);
     month.incomes.push({ id: "first", name: "First pay", amountCents: 200000 }, { id: "second", name: "Second pay", amountCents: 200000 });
     month.expenses.push({ id: "rent", name: "Rent", amountCents: 120000, bucket: "needs", date: "2026-09-01" });

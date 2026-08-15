@@ -3,7 +3,7 @@ import { importBudgetWorkbook, budgetWorkbook } from "@/lib/budget/spreadsheet";
 import { clonePayMonth, createEmptyVault, type BudgetVault } from "@/lib/budget/types";
 
 describe("budget spreadsheet transfer", () => {
-  it("round-trips v3 pay months, one income list, and recurring monthly expenses", async () => {
+  it("round-trips v3 pay-months, one income list, and recurring monthly expenses", async () => {
     const vault: BudgetVault = createEmptyVault(); vault.settings.defaultTargets = { needs: 55, goals: 25, wants: 20 };
     const month = clonePayMonth(undefined, "2026-08-14", { needs: 60, goals: 20, wants: 20 }, []);
     month.incomes.push({ id: "income-one", name: "Paycheck one", amountCents: 175000 }, { id: "income-two", name: "Paycheck two", amountCents: 175000 });
