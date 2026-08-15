@@ -13,7 +13,11 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          // Google Identity Services needs to communicate with its consent
+          // popup after the user returns to this page. Strict same-origin
+          // isolates that popup and produces the misleading “Popup window
+          // closed” result after successful consent.
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" }
         ]
       }
