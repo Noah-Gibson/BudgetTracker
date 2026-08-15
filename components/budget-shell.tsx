@@ -150,6 +150,15 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     try {
       const salt = bytesToB64(randomBytes(16)); await requestPasskey("registration");
       const assertion = await requestPasskey("authentication", remember ? salt : undefined);
+      // A browser can lose its remembered envelope while the encrypted vault
+      // remains on the server. Never try to overwrite that vault as a fresh
+      // revision-one save; require the explicit destructive reset decision.
+      const existingVault = await fetchEnvelope();
+      if (existingVault) {
+        setResetCandidate({ salt, prf: assertion.prf, replaceExisting: true });
+        setSetup(false);
+        return;
+      }
       const vaultKey = await generateVaultKey(); const code = recoveryKey(); const recoveryWrapper = await wrapWithRecovery(vaultKey, code);
       if (remember) {
         if (!assertion.prf) throw new Error("This passkey cannot remember this browser. You can continue without the option enabled.");
