@@ -25,9 +25,14 @@ export async function PUT(request: Request) {
   if (existing && input.revision !== existing.revision + 1) return NextResponse.json({ error: "revision_conflict", revision: existing.revision }, { status: 409 });
   if (!existing) {
     if (input.revision !== 1) return NextResponse.json({ error: "revision_conflict", revision: 0 }, { status: 409 });
-    await db.insert(vaults).values({ ownerHandle: owner, vaultId: input.vaultId, ciphertext: input.ciphertext, iv: input.iv, tag: input.tag, recoveryWrappedKey: input.recoveryWrappedKey, recoverySalt: input.recoverySalt, revision: 1 });
+    const inserted = await db.insert(vaults).values({ ownerHandle: owner, vaultId: input.vaultId, ciphertext: input.ciphertext, iv: input.iv, tag: input.tag, recoveryWrappedKey: input.recoveryWrappedKey, recoverySalt: input.recoverySalt, revision: 1 }).onConflictDoNothing({ target: vaults.ownerHandle }).returning({ revision: vaults.revision });
+    // A concurrent first-save may have won between the read above and this
+    // insert. Report it as a conflict instead of acknowledging a write that
+    // did not happen.
+    if (!inserted.length) return NextResponse.json({ error: "revision_conflict", revision: 1 }, { status: 409 });
   } else {
-    await db.update(vaults).set({ ciphertext: input.ciphertext, iv: input.iv, tag: input.tag, recoveryWrappedKey: input.recoveryWrappedKey, recoverySalt: input.recoverySalt, revision: input.revision, updatedAt: new Date() }).where(and(eq(vaults.ownerHandle, owner), eq(vaults.revision, existing.revision)));
+    const updated = await db.update(vaults).set({ ciphertext: input.ciphertext, iv: input.iv, tag: input.tag, recoveryWrappedKey: input.recoveryWrappedKey, recoverySalt: input.recoverySalt, revision: input.revision, updatedAt: new Date() }).where(and(eq(vaults.ownerHandle, owner), eq(vaults.revision, existing.revision))).returning({ revision: vaults.revision });
+    if (!updated.length) return NextResponse.json({ error: "revision_conflict", revision: existing.revision }, { status: 409 });
   }
   return NextResponse.json({ revision: input.revision }, { headers: { "Cache-Control": "no-store" } });
 }

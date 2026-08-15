@@ -15,7 +15,11 @@ function rp(request: Request) { const host = request.headers.get("host"); if (!h
 export async function POST(request: Request) {
   await requireSameOrigin(); const owner = await requireOwner(); if (!rateLimit(`passkey-options:${owner}`, 10)) return NextResponse.json({ error: "Too many requests" }, { status: 429 }); const { mode, prfSalt } = requestSchema.parse(await request.json());
   const rpID = rp(request); const db = database(); const credentials = await db.select().from(passkeys).where(eq(passkeys.ownerHandle, owner));
-  const prf = prfSalt ? { prf: { eval: { first: new Uint8Array(Buffer.from(prfSalt, "base64url")) } } } : undefined;
+  // `PublicKeyCredential*OptionsJSON` must contain base64url text. The browser
+  // turns this back into a BufferSource immediately before calling WebAuthn.
+  // Serializing a Uint8Array here produces a numeric object instead, which
+  // causes authenticators to silently ignore the optional PRF extension.
+  const prf = prfSalt ? { prf: { eval: { first: prfSalt } } } : undefined;
   const options = mode === "registration"
     ? await generateRegistrationOptions({ rpName: "Cipher Budget", rpID, userName: owner, userDisplayName: "Cipher Budget user", userID: new TextEncoder().encode(owner), attestationType: "none", authenticatorSelection: { residentKey: "required", userVerification: "required" }, excludeCredentials: credentials.map((item) => ({ id: item.credentialId, transports: item.transports as never })) })
     : await generateAuthenticationOptions({

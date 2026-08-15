@@ -38,15 +38,26 @@ function deviceEnvelope(): DeviceEnvelope | null {
   } catch { return null; }
 }
 function passkeyPrf(response: unknown): ArrayBuffer | undefined {
-  const first = (response as { clientExtensionResults?: { prf?: { results?: { first?: ArrayBuffer } } } }).clientExtensionResults?.prf?.results?.first;
-  return first instanceof ArrayBuffer ? first : undefined;
+  const first = (response as { clientExtensionResults?: { prf?: { results?: { first?: ArrayBuffer | Uint8Array | string } } } }).clientExtensionResults?.prf?.results?.first;
+  if (first instanceof ArrayBuffer) return first;
+  if (first instanceof Uint8Array) return first.buffer.slice(first.byteOffset, first.byteOffset + first.byteLength) as ArrayBuffer;
+  return typeof first === "string" ? b64ToBytes(first).buffer : undefined;
 }
 async function requestPasskey(mode: "registration" | "authentication", salt?: string) {
   const optionsResponse = await fetch("/api/passkeys/options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, prfSalt: salt }) });
   if (!optionsResponse.ok) throw new Error("Unable to start passkey verification. Check that the secure server environment is configured.");
   const options = await optionsResponse.json();
+  // The API deliberately returns JSON-safe base64url. WebAuthn requires the
+  // native BufferSource form, and SimpleWebAuthn only converts its standard
+  // fields automatically, not extension inputs.
+  if (mode === "authentication" && salt && options.extensions?.prf?.eval?.first === salt) {
+    options.extensions.prf.eval.first = b64ToBytes(salt).buffer;
+  }
   const response = mode === "registration" ? await startRegistration({ optionsJSON: options }) : await startAuthentication({ optionsJSON: options });
-  const verified = await fetch("/api/passkeys/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, response }) });
+  // The PRF output is client-only key material. Authentication verification
+  // does not need it, so never transmit it to the backend.
+  const { clientExtensionResults: _clientExtensionResults, ...responseForVerification } = response;
+  const verified = await fetch("/api/passkeys/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, response: responseForVerification }) });
   if (!verified.ok) throw new Error("The passkey could not be verified.");
   return { prf: mode === "authentication" ? passkeyPrf(response) : undefined };
 }
@@ -207,7 +218,20 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   };
   const confirmCeremony = async () => {
     if (!key || !vault || !envelope || confirmRecovery.trim() !== createdRecovery) { setNotice("Enter the recovery key exactly as shown to verify it."); return; }
-    try { await save(vault); setCreatedRecovery(""); setConfirmRecovery(""); toast.current?.show({ severity: "success", summary: "Vault secured", detail: "Your encrypted budget vault is ready." }); } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to save your encrypted vault."); }
+    // The first persisted revision must be written exactly once. Without this
+    // guard, a quick double-click can submit revision 1 twice: one request
+    // succeeds and the other correctly reports an optimistic-lock conflict.
+    if (busy) return;
+    setBusy(true); setNotice("");
+    try {
+      await save(vault);
+      setCreatedRecovery(""); setConfirmRecovery("");
+      toast.current?.show({ severity: "success", summary: "Vault secured", detail: "Your encrypted budget vault is ready." });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to save your encrypted vault.");
+    } finally {
+      setBusy(false);
+    }
   };
   const forgetBrowser = () => {
     if (!window.confirm("Forget this browser? Its remembered encrypted vault envelope will be removed from this device.")) return;
@@ -222,7 +246,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     {setup && <section className="unlock-card"><i className="pi pi-key unlock-icon" /><h1>Create your encrypted vault</h1><p>Set up a site passkey. It is required alongside Google sign-in to access your financial data.</p><div className="remember-choice"><Checkbox inputId="remember-setup" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-setup">Remember this personal, device-encrypted browser</label></div><small>Never select this on a shared device. It stores only an encrypted key envelope, never budget data or a raw key.</small>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create vault with passkey" icon="pi pi-shield" loading={busy} onClick={startSetup} /><Button text label="Back" onClick={() => setSetup(false)} /></div></section>}
     {vault && <BudgetBoard vault={vault} onChange={(next) => { setVault(next); void save(next).catch((error) => setNotice(error instanceof Error ? error.message : "Save failed")); }} onForget={forgetBrowser} />}
     <Dialog visible={Boolean(resetCandidate)} modal closable={!busy} dismissableMask={false} header={resetCandidate?.replaceExisting ? "Permanently replace encrypted vault?" : "Create a new vault?"} className="recovery-dialog" onHide={() => { if (!busy) setResetCandidate(null); }}><p className="danger-copy">{resetCandidate?.replaceExisting ? "You cannot unlock the existing vault with this passkey alone. Continuing permanently deletes its encrypted ciphertext. Even if you find the old recovery key later, the old budget data cannot be recovered." : "No existing encrypted vault was found. Continuing creates a new empty vault with your verified passkey."}</p><p>You will be shown a new recovery key before the new vault can be used.</p><div className="button-row"><Button severity="danger" label={resetCandidate?.replaceExisting ? "Delete old vault and create new" : "Create new vault"} icon="pi pi-exclamation-triangle" loading={busy} onClick={confirmVaultReset} /><Button text label="Cancel" disabled={busy} onClick={() => setResetCandidate(null)} /></div></Dialog>
-    <Dialog visible={Boolean(createdRecovery)} modal closable={false} dismissableMask={false} header="Record your recovery key" className="recovery-dialog" onHide={() => setShowAbandon(true)}><p className="danger-copy">This recovery key is the only backup if you lose your passkey. If you do not record it, you WILL permanently lose access to all your budget data. After this screen is closed, it is never accessible or recoverable by anyone again.</p><code className="recovery-code">{createdRecovery}</code><div className="button-row"><Button text label="Copy" icon="pi pi-copy" onClick={() => navigator.clipboard.writeText(createdRecovery)} /><Button text label="Print" icon="pi pi-print" onClick={() => window.print()} /><Button text label="Download" icon="pi pi-download" onClick={() => { const blob = new Blob(["Cipher Budget recovery key\n\n" + createdRecovery + "\n"], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "cipher-budget-recovery-key.txt"; link.click(); URL.revokeObjectURL(link.href); }} /></div><p>Store it in a password manager or another secure offline location. Do not share it or keep it in unsecured notes.</p><label htmlFor="confirm-recovery">Enter the complete recovery key to verify you recorded it.</label><InputText id="confirm-recovery" value={confirmRecovery} onChange={(event) => setConfirmRecovery(event.target.value)} autoComplete="off" className="full-width" />{notice && <p className="error">{notice}</p>}<Button label="I recorded it — secure my vault" icon="pi pi-check" onClick={confirmCeremony} /><Button text severity="secondary" label="I need more time" onClick={() => setShowAbandon(true)} /><Dialog visible={showAbandon} modal header="Leave vault setup?" onHide={() => setShowAbandon(false)}><p>If you leave without recording and verifying this key, all newly created encrypted vault data will be discarded. You will need to set up a new vault later.</p><Button severity="danger" label="Discard unverified vault" onClick={() => { setCreatedRecovery(""); setConfirmRecovery(""); setVault(null); setKey(null); setEnvelope(null); setShowAbandon(false); setNotice("Vault setup was abandoned. No financial data was saved."); }} /></Dialog></Dialog>
+    <Dialog visible={Boolean(createdRecovery)} modal closable={false} dismissableMask={false} header="Record your recovery key" className="recovery-dialog" onHide={() => setShowAbandon(true)}><p className="danger-copy">This recovery key is the only backup if you lose your passkey. If you do not record it, you WILL permanently lose access to all your budget data. After this screen is closed, it is never accessible or recoverable by anyone again.</p><code className="recovery-code">{createdRecovery}</code><div className="button-row"><Button text label="Copy" icon="pi pi-copy" onClick={() => navigator.clipboard.writeText(createdRecovery)} /><Button text label="Print" icon="pi pi-print" onClick={() => window.print()} /><Button text label="Download" icon="pi pi-download" onClick={() => { const blob = new Blob(["Cipher Budget recovery key\n\n" + createdRecovery + "\n"], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "cipher-budget-recovery-key.txt"; link.click(); URL.revokeObjectURL(link.href); }} /></div><p>Store it in a password manager or another secure offline location. Do not share it or keep it in unsecured notes.</p><label htmlFor="confirm-recovery">Enter the complete recovery key to verify you recorded it.</label><InputText id="confirm-recovery" value={confirmRecovery} onChange={(event) => setConfirmRecovery(event.target.value)} autoComplete="off" className="full-width" />{notice && <p className="error">{notice}</p>}<Button label="I recorded it — secure my vault" icon="pi pi-check" loading={busy} disabled={busy} onClick={confirmCeremony} /><Button text severity="secondary" label="I need more time" disabled={busy} onClick={() => setShowAbandon(true)} /><Dialog visible={showAbandon} modal header="Leave vault setup?" onHide={() => setShowAbandon(false)}><p>If you leave without recording and verifying this key, all newly created encrypted vault data will be discarded. You will need to set up a new vault later.</p><Button severity="danger" label="Discard unverified vault" onClick={() => { setCreatedRecovery(""); setConfirmRecovery(""); setVault(null); setKey(null); setEnvelope(null); setShowAbandon(false); setNotice("Vault setup was abandoned. No financial data was saved."); }} /></Dialog></Dialog>
   </main>;
 }
 
