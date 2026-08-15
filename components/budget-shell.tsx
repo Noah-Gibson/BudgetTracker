@@ -170,7 +170,14 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const [autoUnlocking, setAutoUnlocking] = useState(false);
   const toast = useRef<Toast>(null);
   const attemptedRememberedUnlock = useRef(false);
-  const lock = useCallback((message = "Vault locked. Verify your passkey to continue.") => { setVault(null); setKey(null); setEnvelope(null); setNotice(message); }, []);
+  const activeKey = useRef<CryptoKey | null>(null);
+  const activeEnvelope = useRef<Envelope | null>(null);
+  const pendingSave = useRef<BudgetVault | null>(null);
+  const saveInFlight = useRef<Promise<void> | null>(null);
+  const lock = useCallback((message = "Vault locked. Verify your passkey to continue.") => {
+    pendingSave.current = null; activeKey.current = null; activeEnvelope.current = null;
+    setVault(null); setKey(null); setEnvelope(null); setNotice(message);
+  }, []);
 
   useEffect(() => {
     const activity = () => setLastActivity(Date.now());
@@ -192,14 +199,16 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         const remote = await fetchEnvelope();
         if (!remote) { setSetup(true); return; }
         const unlocked = await unlockTrustedDevice(device);
-        setKey(unlocked); setEnvelope(remote); setVault(await decryptVault(remote, unlocked)); setLastActivity(Date.now());
+        const decrypted = await decryptVault(remote, unlocked); activeKey.current = unlocked; activeEnvelope.current = remote;
+        setKey(unlocked); setEnvelope(remote); setVault(decrypted); setLastActivity(Date.now());
         return;
       }
       const assertion = await requestPasskey("authentication", device.salt); const remote = await fetchEnvelope();
       if (!remote) { setSetup(true); return; }
       if (!assertion.prf) throw new Error("This passkey cannot unlock the remembered vault. Use your recovery key to enroll a supported browser.");
       const unlocked = await unwrapWithPasskey(device.wrappedKey, assertion.prf, b64ToBytes(device.salt));
-      setKey(unlocked); setEnvelope(remote); setVault(await decryptVault(remote, unlocked)); setLastActivity(Date.now());
+      const decrypted = await decryptVault(remote, unlocked); activeKey.current = unlocked; activeEnvelope.current = remote;
+      setKey(unlocked); setEnvelope(remote); setVault(decrypted); setLastActivity(Date.now());
     } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to unlock the vault."); } finally { setBusy(false); }
   };
   useEffect(() => {
@@ -240,7 +249,8 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         const trustedDevice = await rememberTrustedDevice(unlocked);
         localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
       }
-      setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(await decryptVault(remote, unlocked)); setLastActivity(Date.now());
+      const decrypted = await decryptVault(remote, unlocked); activeKey.current = unlocked; activeEnvelope.current = remote;
+      setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(decrypted); setLastActivity(Date.now());
       toast.current?.show({ severity: "success", summary: addedPasskey ? "Browser passkey added" : "Vault unlocked", detail: remember ? "This trusted browser will also reopen with your Google session." : addedPasskey ? "Keep your recovery key: it is needed again after this browser is forgotten." : "Your existing browser passkey was verified." });
     } catch (error) { setNotice(error instanceof Error ? error.message : "The recovery key could not unlock this vault."); } finally { setBusy(false); }
   };
@@ -263,7 +273,9 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         const trustedDevice = await rememberTrustedDevice(vaultKey);
         localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
       }
-      setKey(vaultKey); setVault(createEmptyVault()); setEnvelope({ vaultId: newId(), revision: 0, ciphertext: "", iv: "", tag: "", ...recoveryWrapper });
+      const initialVault = createEmptyVault(); const initialEnvelope = { vaultId: newId(), revision: 0, ciphertext: "", iv: "", tag: "", ...recoveryWrapper };
+      activeKey.current = vaultKey; activeEnvelope.current = initialEnvelope;
+      setKey(vaultKey); setVault(initialVault); setEnvelope(initialEnvelope);
       setCreatedRecovery(code); setSetup(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Passkey setup failed.";
@@ -301,9 +313,11 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       }
       const trustedDevice = remember ? await rememberTrustedDevice(newVaultKey) : null;
       if (trustedDevice) localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
+      const initialVault = createEmptyVault(); const initialEnvelope = { vaultId: newId(), revision: 0, ciphertext: "", iv: "", tag: "", ...recoveryWrapper };
+      activeKey.current = newVaultKey; activeEnvelope.current = initialEnvelope;
       setKey(newVaultKey);
-      setVault(createEmptyVault());
-      setEnvelope({ vaultId: newId(), revision: 0, ciphertext: "", iv: "", tag: "", ...recoveryWrapper });
+      setVault(initialVault);
+      setEnvelope(initialEnvelope);
       setCreatedRecovery(code);
       setResetCandidate(null); setSetup(false);
     } catch (error) {
@@ -311,13 +325,36 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     } finally { setBusy(false); }
   };
   const save = async (nextVault: BudgetVault) => {
-    if (!key || !envelope) return;
-    const revision = envelope.revision + 1;
-    const encrypted = await encryptVault(nextVault, key, envelope.vaultId, revision);
-    const response = await fetch("/api/vault", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...encrypted, vaultId: envelope.vaultId, revision, recoveryWrappedKey: envelope.recoveryWrappedKey, recoverySalt: envelope.recoverySalt }) });
-    if (response.status === 409) { lock("Your vault changed on another device. Unlock again to safely reload it."); return; }
-    if (!response.ok) throw new Error("Encrypted save failed. Your changes remain only in this browser.");
-    setEnvelope({ ...envelope, ...encrypted, revision }); setVault(nextVault);
+    pendingSave.current = nextVault;
+    if (saveInFlight.current) return saveInFlight.current;
+    const drain = async () => {
+      // Coalesce high-frequency edits (especially the target sliders), but
+      // persist each resulting revision in order. Every request therefore uses
+      // the revision returned by the preceding successful write.
+      while (pendingSave.current) {
+        const vaultToSave = pendingSave.current;
+        pendingSave.current = null;
+        const currentKey = activeKey.current; const currentEnvelope = activeEnvelope.current;
+        if (!currentKey || !currentEnvelope) return;
+        const revision = currentEnvelope.revision + 1;
+        const encrypted = await encryptVault(vaultToSave, currentKey, currentEnvelope.vaultId, revision);
+        const response = await fetch("/api/vault", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...encrypted, vaultId: currentEnvelope.vaultId, revision, recoveryWrappedKey: currentEnvelope.recoveryWrappedKey, recoverySalt: currentEnvelope.recoverySalt }) });
+        if (response.status === 409) {
+          lock("Your vault changed on another device. Unlock again to safely reload it.");
+          return;
+        }
+        if (!response.ok) throw new Error("Encrypted save failed. Your changes remain only in this browser.");
+        // An explicit lock may have occurred while the request was in flight.
+        // Never repopulate state after that lock with a late response.
+        if (activeKey.current !== currentKey || activeEnvelope.current !== currentEnvelope) return;
+        const savedEnvelope = { ...currentEnvelope, ...encrypted, revision };
+        activeEnvelope.current = savedEnvelope;
+        setEnvelope(savedEnvelope);
+      }
+    };
+    const operation = drain();
+    saveInFlight.current = operation;
+    try { await operation; } finally { if (saveInFlight.current === operation) saveInFlight.current = null; }
   };
   const confirmCeremony = async () => {
     if (!key || !vault || !envelope || confirmRecovery.trim() !== createdRecovery) { setNotice("Enter the recovery key exactly as shown to verify it."); return; }
