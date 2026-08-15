@@ -7,10 +7,20 @@ const GIS_SRC = "https://accounts.google.com/gsi/client";
 
 export type DriveRecoveryPackage = { format: 1; vaultId: string; recoveryKey: string; createdAt: string };
 export type DriveBackupRemoval = "removed" | "not-found" | "different-vault";
+export type DriveRecoveryCheck =
+  | { status: "connected"; backup: DriveRecoveryPackage }
+  | { status: "connect-required" | "missing-backup" | "unavailable" };
 
-type TokenResponse = { access_token?: string; error?: string; error_description?: string; scope?: string };
-type TokenClient = { requestAccessToken: (options?: { prompt?: string }) => void };
-type GoogleIdentity = { accounts: { oauth2: { initTokenClient: (options: { client_id: string; scope: string; callback: (response: TokenResponse) => void; error_callback?: (error: { type?: string; message?: string }) => void }) => TokenClient } } };
+type TokenResponse = { access_token?: string; error?: string; error_description?: string; expires_in?: number; scope?: string };
+type TokenRequest = { prompt?: "" | "none" | "consent" };
+type TokenClient = { requestAccessToken: (options?: TokenRequest) => void };
+type GoogleIdentity = { accounts: { oauth2: { initTokenClient: (options: { client_id: string; scope: string; login_hint?: string; callback: (response: TokenResponse) => void; error_callback?: (error: { type?: string; message?: string }) => void }) => TokenClient } } };
+type TokenRequestOptions = { prompt?: "" | "none" | "consent"; loginHint?: string };
+type MemoryToken = { value: string; expiresAt: number; loginHint?: string };
+
+class DriveRecoveryError extends Error {
+  constructor(message: string, readonly kind: "connect-required" | "missing-backup" | "unavailable" = "unavailable") { super(message); }
+}
 
 declare global { interface Window { google?: GoogleIdentity } }
 
@@ -20,8 +30,9 @@ function clientId() {
   return value;
 }
 
-function packageError(message = "Your Google Drive backup could not be used.") { return new Error(message); }
-let pendingTokenRequest: Promise<string> | null = null;
+function packageError(message = "Your Google Drive backup could not be used.", kind: DriveRecoveryError["kind"] = "unavailable") { return new DriveRecoveryError(message, kind); }
+let memoryToken: MemoryToken | null = null;
+const pendingTokenRequests = new Map<string, Promise<string>>();
 
 async function loadGoogleIdentity() {
   if (window.google?.accounts.oauth2) return window.google;
@@ -34,55 +45,65 @@ async function loadGoogleIdentity() {
   return window.google;
 }
 
-function requestDriveToken() {
+function requestDriveToken(options: TokenRequestOptions = {}) {
   // Safari's installed web apps only permit Google to open its authorization
   // window while the originating tap is still active. Do not await script
   // loading here: requestAccessToken must run in the same call stack.
   const google = window.google;
   if (!google?.accounts.oauth2) return Promise.reject(packageError("Google Drive is still getting ready. Wait a moment, then tap the button again."));
   return new Promise<string>((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(packageError(options.prompt === "none" ? "Google Drive needs to be connected before restoring this vault." : "Google Drive access was not granted.", "connect-required")), 10_000);
+    const finish = (callback: () => void) => { window.clearTimeout(timeout); callback(); };
     const client = google.accounts.oauth2.initTokenClient({
-      client_id: clientId(), scope: DRIVE_SCOPE,
+      client_id: clientId(), scope: DRIVE_SCOPE, ...(options.loginHint ? { login_hint: options.loginHint } : {}),
       callback: (response) => {
-        if (!response.access_token) { reject(packageError(response.error_description ?? "Google Drive access was not granted.")); return; }
+        const token = response.access_token;
+        if (!token) { finish(() => reject(packageError(response.error_description ?? (options.prompt === "none" ? "Google Drive needs to be connected before restoring this vault." : "Google Drive access was not granted."), "connect-required"))); return; }
         // Google may return a partial grant. Do not send a token to Drive when
         // the specific private app-data permission was declined or blocked.
         if (response.scope && !response.scope.split(/\s+/).includes(DRIVE_SCOPE)) {
-          reject(packageError("Google did not grant Cipher Budget permission to its private Drive app-data folder. Approve the requested Drive permission and try again."));
+          finish(() => reject(packageError("Google did not grant Cipher Budget permission to its private Drive app-data folder. Approve the requested Drive permission and try again.", "connect-required")));
           return;
         }
-        resolve(response.access_token);
+        memoryToken = { value: token, expiresAt: Date.now() + Math.max(30, response.expires_in ?? 300) * 1000, loginHint: options.loginHint };
+        finish(() => resolve(token));
       },
-      error_callback: (error) => reject(packageError(error.type === "popup_failed_to_open" ? "Safari could not open Google’s authorization window. Open Cipher Budget in Safari instead of its Home Screen web app, then try Google Drive recovery again." : error.message ?? "Google Drive access was cancelled."))
+      error_callback: (error) => finish(() => reject(packageError(error.type === "popup_failed_to_open" ? "Safari could not open Google’s authorization window. Open Cipher Budget in Safari instead of its Home Screen web app, then try Google Drive recovery again." : error.message ?? "Google Drive access was cancelled.", "connect-required")))
     });
-    client.requestAccessToken({ prompt: "consent" });
+    client.requestAccessToken(options.prompt === undefined ? undefined : { prompt: options.prompt });
   });
 }
 
-function driveToken() {
-  // Google permits the token chooser only from a direct user action. Reuse a
-  // pending request so a double-click or overlapping backup operation cannot
-  // open a second popup and leave one of the requests without a token.
-  if (!pendingTokenRequest) pendingTokenRequest = requestDriveToken().finally(() => { pendingTokenRequest = null; });
-  return pendingTokenRequest;
+function driveToken(options: TokenRequestOptions = {}) {
+  // Tokens are intentionally memory-only. Reusing an unexpired token avoids a
+  // second Google UX during one page visit without persisting account access.
+  if (memoryToken && memoryToken.expiresAt > Date.now() + 10_000 && (!options.loginHint || memoryToken.loginHint === options.loginHint)) return Promise.resolve(memoryToken.value);
+  const requestKey = `${options.prompt ?? "default"}:${options.loginHint ?? ""}`;
+  const pending = pendingTokenRequests.get(requestKey);
+  if (pending) return pending;
+  const request = requestDriveToken(options).finally(() => pendingTokenRequests.delete(requestKey));
+  pendingTokenRequests.set(requestKey, request);
+  return request;
 }
 
 /** Preloads GIS before a user taps a Drive action, preserving Safari activation. */
 export function prepareDriveRecoveryAuthorization() { return loadGoogleIdentity(); }
 /** Starts Google authorization synchronously in the calling button handler. */
-export function beginDriveRecoveryAuthorization() { return driveToken(); }
+export function beginDriveRecoveryAuthorization(loginHint?: string) { return driveToken({ prompt: "", loginHint }); }
+/** Clears the ephemeral Drive token when the account session ends. */
+export function clearDriveRecoveryAuthorization() { memoryToken = null; pendingTokenRequests.clear(); }
 
 type DriveApiError = { error?: { message?: string; errors?: { reason?: string }[] } };
 async function driveFailure(response: Response) {
   const body = await response.clone().json().catch(() => null) as DriveApiError | null;
   const message = body?.error?.message ?? "";
   const reason = body?.error?.errors?.[0]?.reason ?? "";
-  if (response.status === 401) return packageError("Google Drive did not accept this authorization. Click the backup button again and approve the private Drive permission.");
+  if (response.status === 401) { memoryToken = null; return packageError("Google Drive needs to be connected again before restoring this vault.", "connect-required"); }
   if (response.status === 403 && (reason === "accessNotConfigured" || reason === "serviceDisabled" || /has not been used|is disabled/i.test(message))) {
     return packageError("The Google Drive API is not enabled for this Google Cloud project. Enable the Google Drive API, then try again.");
   }
   if (response.status === 403 && (reason === "insufficientPermissions" || /insufficient authentication scopes|permission/i.test(message))) {
-    return packageError("Google did not grant access to Cipher Budget’s private Drive app-data folder. Add the drive.appdata scope in Google Cloud’s Data Access page, then approve the permission and try again.");
+    return packageError("Google did not grant access to Cipher Budget’s private Drive app-data folder. Add the drive.appdata scope in Google Cloud’s Data Access page, then approve the permission and try again.", "connect-required");
   }
   if (response.status === 403 && reason === "domainPolicy") {
     return packageError("This Google Workspace account is blocked by its organization from using Drive apps. Use a personal Google account or ask the Workspace administrator to allow Cipher Budget.");
@@ -145,10 +166,20 @@ export async function saveDriveRecoveryBackup(vaultId: string, recoveryKey: stri
   if (verified.vaultId !== vaultId || verified.recoveryKey !== recoveryKey) throw packageError("Google Drive backup verification failed.");
 }
 
-export async function loadDriveRecoveryBackup() {
-  const token = await driveToken(); const backup = await findBackup(token);
-  if (!backup) throw packageError("No Cipher Budget recovery backup was found in this Google Drive account.");
+export async function loadDriveRecoveryBackup(options: TokenRequestOptions = {}) {
+  const token = await driveToken(options); const backup = await findBackup(token);
+  if (!backup) throw packageError("No Cipher Budget recovery backup was found in this Google Drive account.", "missing-backup");
   return readBackup(token, backup.id);
+}
+
+/** Silently discovers an existing grant and recovery package; it never opens a Google popup. */
+export async function checkDriveRecoveryBackup(loginHint?: string): Promise<DriveRecoveryCheck> {
+  try {
+    return { status: "connected", backup: await loadDriveRecoveryBackup({ prompt: "none", loginHint }) };
+  } catch (error) {
+    if (error instanceof DriveRecoveryError) return { status: error.kind };
+    return { status: "unavailable" };
+  }
 }
 
 export async function verifyDriveRecoveryBackup(vaultId: string, recoveryKey: string) {

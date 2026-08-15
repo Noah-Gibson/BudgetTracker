@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import "primereact/resources/themes/lara-light-teal/theme.css";
+import "@fontsource-variable/dm-sans";
+import "@fontsource/source-serif-4/400.css";
+import "@fontsource/source-serif-4/600.css";
+import "primereact/resources/themes/lara-dark-purple/theme.css";
 import "primereact/resources/primereact.min.css";
 import "primeicons/primeicons.css";
 import "./globals.css";
@@ -14,5 +17,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><AppProviders>{children}</AppProviders><Analytics /><SpeedInsights /></body></html>;
+  return <html lang="en" data-theme="dark" suppressHydrationWarning><body><AppProviders>{children}</AppProviders><Analytics /><SpeedInsights /></body></html>;
 }
