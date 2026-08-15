@@ -12,11 +12,16 @@ import { InputText } from "primereact/inputtext";
 import { ProgressBar } from "primereact/progressbar";
 import { Toast } from "primereact/toast";
 import { addDays, bucketMeta, clonePeriod, createEmptyVault, money, newId, todayISO, totals, type BudgetPeriod, type Bucket, type BudgetVault, type ExpenseEntry, type IncomeEntry } from "@/lib/budget/types";
-import { decryptVault, encryptVault, generateVaultKey, randomBytes, recoveryKey, unwrapWithPasskey, unwrapWithRecovery, wrapWithPasskey, wrapWithRecovery, type Envelope } from "@/lib/crypto/vault";
+import { decryptVault, encryptVault, exportVaultKey, generateVaultKey, importVaultKey, randomBytes, recoveryKey, unwrapWithPasskey, unwrapWithRecovery, wrapWithRecovery, type Envelope } from "@/lib/crypto/vault";
 
-type DeviceEnvelope = { salt: string; wrappedKey: string; deviceId: string };
+type PasskeyDeviceEnvelope = { kind?: "passkey"; salt: string; wrappedKey: string; deviceId: string };
+type TrustedDeviceEnvelope = { kind: "trusted-device"; iv: string; wrappedKey: string; deviceId: string };
+type DeviceEnvelope = PasskeyDeviceEnvelope | TrustedDeviceEnvelope;
 type ListEntry = { id: string; name: string; amountCents: number; date?: string; recurring?: boolean };
 const DEVICE_KEY = "cipher-budget:device-v1";
+const DEVICE_DATABASE = "cipher-budget-device-keys";
+const DEVICE_STORE = "keys";
+const TRUSTED_DEVICE_KEY = "trusted-device-key-v1";
 const expenseHints: Record<Bucket, string> = {
   needs: "e.g. Groceries",
   goals: "e.g. Student loan payment",
@@ -34,8 +39,62 @@ const b64ToBytes = (value: string) => {
 function deviceEnvelope(): DeviceEnvelope | null {
   try {
     const stored = localStorage.getItem(DEVICE_KEY);
-    return stored ? JSON.parse(stored) as DeviceEnvelope : null;
+    const value = stored ? JSON.parse(stored) as { kind?: unknown; salt?: unknown; iv?: unknown; wrappedKey?: unknown; deviceId?: unknown } : null;
+    if (!value || typeof value.wrappedKey !== "string" || typeof value.deviceId !== "string") return null;
+    if (value.kind === "trusted-device" && typeof value.iv === "string") return value as TrustedDeviceEnvelope;
+    return typeof value.salt === "string" ? value as PasskeyDeviceEnvelope : null;
   } catch { return null; }
+}
+function deviceDatabase() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const open = indexedDB.open(DEVICE_DATABASE, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore(DEVICE_STORE);
+    open.onsuccess = () => resolve(open.result);
+    open.onerror = () => reject(open.error ?? new Error("Unable to access this browser's secure key storage."));
+  });
+}
+async function readTrustedDeviceKey() {
+  const db = await deviceDatabase();
+  try {
+    return await new Promise<CryptoKey | undefined>((resolve, reject) => {
+      const request = db.transaction(DEVICE_STORE, "readonly").objectStore(DEVICE_STORE).get(TRUSTED_DEVICE_KEY);
+      request.onsuccess = () => resolve(request.result as CryptoKey | undefined);
+      request.onerror = () => reject(request.error);
+    });
+  } finally { db.close(); }
+}
+async function writeTrustedDeviceKey(key: CryptoKey) {
+  const db = await deviceDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(DEVICE_STORE, "readwrite");
+      transaction.objectStore(DEVICE_STORE).put(key, TRUSTED_DEVICE_KEY);
+      transaction.oncomplete = () => resolve(); transaction.onerror = () => reject(transaction.error);
+    });
+  } finally { db.close(); }
+}
+async function forgetTrustedDeviceKey() {
+  const db = await deviceDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(DEVICE_STORE, "readwrite");
+      transaction.objectStore(DEVICE_STORE).delete(TRUSTED_DEVICE_KEY);
+      transaction.oncomplete = () => resolve(); transaction.onerror = () => reject(transaction.error);
+    });
+  } finally { db.close(); }
+}
+async function rememberTrustedDevice(vaultKey: CryptoKey): Promise<TrustedDeviceEnvelope> {
+  const deviceKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const iv = randomBytes(12);
+  const wrapped = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, deviceKey, await exportVaultKey(vaultKey));
+  await writeTrustedDeviceKey(deviceKey);
+  return { kind: "trusted-device", iv: bytesToB64(iv), wrappedKey: bytesToB64(new Uint8Array(wrapped)), deviceId: newId() };
+}
+async function unlockTrustedDevice(device: TrustedDeviceEnvelope) {
+  const deviceKey = await readTrustedDeviceKey();
+  if (!deviceKey) throw new Error("This browser's trusted-device key is unavailable. Use your recovery key to enroll it again.");
+  const raw = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBytes(device.iv) }, deviceKey, b64ToBytes(device.wrappedKey));
+  return importVaultKey(new Uint8Array(raw));
 }
 function passkeyPrf(response: unknown): ArrayBuffer | undefined {
   const first = (response as { clientExtensionResults?: { prf?: { results?: { first?: ArrayBuffer | Uint8Array | string } } } }).clientExtensionResults?.prf?.results?.first;
@@ -98,7 +157,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const [createdRecovery, setCreatedRecovery] = useState("");
   const [confirmRecovery, setConfirmRecovery] = useState("");
   const [setup, setSetup] = useState(false);
-  const [resetCandidate, setResetCandidate] = useState<{ salt: string; prf?: ArrayBuffer; replaceExisting: boolean } | null>(null);
+  const [resetCandidate, setResetCandidate] = useState<{ replaceExisting: boolean } | null>(null);
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -123,6 +182,13 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     setBusy(true); setNotice("");
     try {
       const device = deviceEnvelope(); if (!device) throw new Error("No remembered vault key is stored in this browser.");
+      if (device.kind === "trusted-device") {
+        const remote = await fetchEnvelope();
+        if (!remote) { setSetup(true); return; }
+        const unlocked = await unlockTrustedDevice(device);
+        setKey(unlocked); setEnvelope(remote); setVault(await decryptVault(remote, unlocked)); setLastActivity(Date.now());
+        return;
+      }
       const assertion = await requestPasskey("authentication", device.salt); const remote = await fetchEnvelope();
       if (!remote) { setSetup(true); return; }
       if (!assertion.prf) throw new Error("This passkey cannot unlock the remembered vault. Use your recovery key to enroll a supported browser.");
@@ -133,14 +199,12 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const unlockRecovery = async () => {
     setBusy(true); setNotice("");
     try {
-      const device = deviceEnvelope(); const salt = device?.salt ?? bytesToB64(randomBytes(16));
-      const assertion = await requestPasskey("authentication", remember ? salt : undefined); const remote = await fetchEnvelope();
+      await requestPasskey("authentication"); const remote = await fetchEnvelope();
       if (!remote) { setSetup(true); return; }
       const unlocked = await unwrapWithRecovery(recovery, remote.recoverySalt!, remote.recoveryWrappedKey!);
       if (remember) {
-        if (!assertion.prf) throw new Error("This passkey cannot remember this browser. You can still unlock with the recovery key.");
-        const wrappedKey = await wrapWithPasskey(unlocked, assertion.prf, b64ToBytes(salt));
-        localStorage.setItem(DEVICE_KEY, JSON.stringify({ salt, wrappedKey, deviceId: newId() }));
+        const trustedDevice = await rememberTrustedDevice(unlocked);
+        localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
       }
       setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(await decryptVault(remote, unlocked)); setLastActivity(Date.now());
     } catch (error) { setNotice(error instanceof Error ? error.message : "The recovery key could not unlock this vault."); } finally { setBusy(false); }
@@ -148,22 +212,21 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const startSetup = async () => {
     setBusy(true); setNotice("");
     try {
-      const salt = bytesToB64(randomBytes(16)); await requestPasskey("registration");
-      const assertion = await requestPasskey("authentication", remember ? salt : undefined);
+      await requestPasskey("registration");
+      await requestPasskey("authentication");
       // A browser can lose its remembered envelope while the encrypted vault
       // remains on the server. Never try to overwrite that vault as a fresh
       // revision-one save; require the explicit destructive reset decision.
       const existingVault = await fetchEnvelope();
       if (existingVault) {
-        setResetCandidate({ salt, prf: assertion.prf, replaceExisting: true });
+        setResetCandidate({ replaceExisting: true });
         setSetup(false);
         return;
       }
       const vaultKey = await generateVaultKey(); const code = recoveryKey(); const recoveryWrapper = await wrapWithRecovery(vaultKey, code);
       if (remember) {
-        if (!assertion.prf) throw new Error("This passkey cannot remember this browser. You can continue without the option enabled.");
-        const wrappedKey = await wrapWithPasskey(vaultKey, assertion.prf, b64ToBytes(salt));
-        localStorage.setItem(DEVICE_KEY, JSON.stringify({ salt, wrappedKey, deviceId: newId() }));
+        const trustedDevice = await rememberTrustedDevice(vaultKey);
+        localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
       }
       setKey(vaultKey); setVault(createEmptyVault()); setEnvelope({ vaultId: newId(), revision: 0, ciphertext: "", iv: "", tag: "", ...recoveryWrapper });
       setCreatedRecovery(code); setSetup(false);
@@ -179,13 +242,11 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const verifyExistingPasskeyForReset = async (manageBusy = true) => {
     if (manageBusy) { setBusy(true); setNotice(""); }
     try {
-      const salt = bytesToB64(randomBytes(16));
-      // Bitwarden and other passkey providers may support ordinary WebAuthn
-      // assertions but not the optional PRF extension. PRF is needed only for
-      // the explicit remembered-device feature, never to reset a vault.
-      const assertion = await requestPasskey("authentication", remember ? salt : undefined);
+      // Reset is an ordinary passkey authentication. It must not depend on the
+      // optional PRF extension, which some password-manager passkeys omit.
+      await requestPasskey("authentication");
       const remote = await fetchEnvelope();
-      setResetCandidate({ salt, prf: assertion.prf, replaceExisting: Boolean(remote) });
+      setResetCandidate({ replaceExisting: Boolean(remote) });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The saved passkey could not be verified.");
     } finally { if (manageBusy) setBusy(false); }
@@ -194,19 +255,17 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     if (!resetCandidate) return;
     setBusy(true); setNotice("");
     try {
-      if (remember && !resetCandidate.prf) throw new Error("This passkey cannot remember this browser. Uncheck the option or use a supported passkey.");
       const newVaultKey = await generateVaultKey();
       const code = recoveryKey();
       const recoveryWrapper = await wrapWithRecovery(newVaultKey, code);
-      const wrappedKey = remember && resetCandidate.prf
-        ? await wrapWithPasskey(newVaultKey, resetCandidate.prf, b64ToBytes(resetCandidate.salt))
-        : null;
       if (resetCandidate.replaceExisting) {
         const deleted = await fetch("/api/vault", { method: "DELETE" });
         if (!deleted.ok) throw new Error("The old vault could not be deleted. No new vault was created.");
         localStorage.removeItem(DEVICE_KEY);
+        await forgetTrustedDeviceKey();
       }
-      if (wrappedKey) localStorage.setItem(DEVICE_KEY, JSON.stringify({ salt: resetCandidate.salt, wrappedKey, deviceId: newId() }));
+      const trustedDevice = remember ? await rememberTrustedDevice(newVaultKey) : null;
+      if (trustedDevice) localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
       setKey(newVaultKey);
       setVault(createEmptyVault());
       setEnvelope({ vaultId: newId(), revision: 0, ciphertext: "", iv: "", tag: "", ...recoveryWrapper });
@@ -245,16 +304,18 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const forgetBrowser = () => {
     if (!window.confirm("Forget this browser? Its remembered encrypted vault envelope will be removed from this device.")) return;
     localStorage.removeItem(DEVICE_KEY);
+    void forgetTrustedDeviceKey();
     toast.current?.show({ severity: "info", summary: "Browser forgotten", detail: "This browser now requires your recovery key after a restart." });
   };
-  const hasDevice = typeof window !== "undefined" && Boolean(deviceEnvelope());
+  const rememberedDevice = typeof window !== "undefined" ? deviceEnvelope() : null;
+  const hasDevice = Boolean(rememberedDevice);
 
   return <main className="app-shell"><Toast ref={toast} />
     <header className="topbar"><div className="brand"><i className="pi pi-lock" /> <span>Cipher Budget</span></div><div className="signed-in-user">{image ? <img src={image} referrerPolicy="no-referrer" alt="" /> : <span className="profile-fallback" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span>}<span>{email}</span></div><div className="topbar-actions"><Button text icon="pi pi-lock" label="Lock" onClick={() => lock("Vault locked.")} /><Button text icon="pi pi-sign-out" label="Sign out" onClick={onSignOut} /></div></header>
-    {!vault && !setup && !createdRecovery && <section className="unlock-card"><i className="pi pi-shield unlock-icon" /><h1>Unlock your private budget</h1><p>Google confirms your identity. Your passkey unlocks the encrypted vault on this browser.</p>{notice && <p className="error">{notice}</p>}{hasDevice ? <Button label={busy ? "Verifying passkey…" : "Unlock with passkey"} icon="pi pi-key" loading={busy} onClick={unlockRemembered} /> : <><Button label="Set up a new vault" icon="pi pi-plus" loading={busy} onClick={() => setSetup(true)} /><div className="recovery-unlock"><h2>Already have a vault?</h2><p>Use your recovery key to add this browser.</p><InputText value={recovery} onChange={(event) => setRecovery(event.target.value)} placeholder="Recovery key" autoComplete="off" /><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser after recovery</label></div><Button outlined label="Recover and unlock" icon="pi pi-key" loading={busy} onClick={unlockRecovery} /></div></>}<Button text severity="danger" label="Reset vault with saved passkey" icon="pi pi-refresh" loading={busy} onClick={() => void verifyExistingPasskeyForReset()} /></section>}
-    {setup && <section className="unlock-card"><i className="pi pi-key unlock-icon" /><h1>Create your encrypted vault</h1><p>Set up a site passkey. It is required alongside Google sign-in to access your financial data.</p><div className="remember-choice"><Checkbox inputId="remember-setup" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-setup">Remember this personal, device-encrypted browser</label></div><small>Never select this on a shared device. It stores only an encrypted key envelope, never budget data or a raw key.</small>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create vault with passkey" icon="pi pi-shield" loading={busy} onClick={startSetup} /><Button text label="Back" onClick={() => setSetup(false)} /></div></section>}
+    {!vault && !setup && !createdRecovery && <section className="unlock-card"><i className="pi pi-shield unlock-icon" /><h1>Unlock your private budget</h1><p>Google confirms your identity. A passkey protects setup and destructive resets; a remembered personal browser can unlock with your Google session.</p>{notice && <p className="error">{notice}</p>}{hasDevice ? <><Button label={busy ? "Unlocking…" : rememberedDevice?.kind === "trusted-device" ? "Unlock remembered browser" : "Unlock with passkey"} icon={rememberedDevice?.kind === "trusted-device" ? "pi pi-lock-open" : "pi pi-key"} loading={busy} onClick={unlockRemembered} /><Button text label="Set up a replacement passkey and vault" icon="pi pi-plus" disabled={busy} onClick={() => setSetup(true)} /></> : <><Button label="Set up a new vault" icon="pi pi-plus" loading={busy} onClick={() => setSetup(true)} /><div className="recovery-unlock"><h2>Already have a vault?</h2><p>Use your recovery key to add this browser.</p><InputText value={recovery} onChange={(event) => setRecovery(event.target.value)} placeholder="Recovery key" autoComplete="off" /><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser (no passkey on return)</label></div><Button outlined label="Recover and unlock" icon="pi pi-key" loading={busy} onClick={unlockRecovery} /></div></>}<Button text severity="danger" label="Reset vault with saved passkey" icon="pi pi-refresh" loading={busy} onClick={() => void verifyExistingPasskeyForReset()} /></section>}
+    {setup && <section className="unlock-card"><i className="pi pi-key unlock-icon" /><h1>Create your encrypted vault</h1><p>Set up a site passkey. It is required alongside Google sign-in to access your financial data.</p><div className="remember-choice"><Checkbox inputId="remember-setup" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-setup">Remember this personal browser (no passkey on return)</label></div><small>Only select this on a personal, device-encrypted browser profile. It stores an encrypted vault-key envelope locally and still requires your Google session; it never stores budget plaintext or the raw vault key.</small>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create vault with passkey" icon="pi pi-shield" loading={busy} onClick={startSetup} /><Button text label="Back" onClick={() => setSetup(false)} /></div></section>}
     {vault && <BudgetBoard vault={vault} onChange={(next) => { setVault(next); void save(next).catch((error) => setNotice(error instanceof Error ? error.message : "Save failed")); }} onForget={forgetBrowser} />}
-    <Dialog visible={Boolean(resetCandidate)} modal closable={!busy} dismissableMask={false} header={resetCandidate?.replaceExisting ? "Permanently replace encrypted vault?" : "Create a new vault?"} className="recovery-dialog" onHide={() => { if (!busy) setResetCandidate(null); }}><p className="danger-copy">{resetCandidate?.replaceExisting ? "You cannot unlock the existing vault with this passkey alone. Continuing permanently deletes its encrypted ciphertext. Even if you find the old recovery key later, the old budget data cannot be recovered." : "No existing encrypted vault was found. Continuing creates a new empty vault with your verified passkey."}</p><p>You will be shown a new recovery key before the new vault can be used.</p><div className="button-row"><Button severity="danger" label={resetCandidate?.replaceExisting ? "Delete old vault and create new" : "Create new vault"} icon="pi pi-exclamation-triangle" loading={busy} onClick={confirmVaultReset} /><Button text label="Cancel" disabled={busy} onClick={() => setResetCandidate(null)} /></div></Dialog>
+    <Dialog visible={Boolean(resetCandidate)} modal closable={!busy} dismissableMask={false} header={resetCandidate?.replaceExisting ? "Permanently replace encrypted vault?" : "Create a new vault?"} className="recovery-dialog" onHide={() => { if (!busy) setResetCandidate(null); }}><p className="danger-copy">{resetCandidate?.replaceExisting ? "You cannot unlock the existing vault with this passkey alone. Continuing permanently deletes its encrypted ciphertext. Even if you find the old recovery key later, the old budget data cannot be recovered." : "No existing encrypted vault was found. Continuing creates a new empty vault with your verified passkey."}</p><p>You will be shown a new recovery key before the new vault can be used.</p>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button severity="danger" label={resetCandidate?.replaceExisting ? "Delete old vault and create new" : "Create new vault"} icon="pi pi-exclamation-triangle" loading={busy} onClick={confirmVaultReset} /><Button text label="Cancel" disabled={busy} onClick={() => setResetCandidate(null)} /></div></Dialog>
     <Dialog visible={Boolean(createdRecovery)} modal closable={false} dismissableMask={false} header="Record your recovery key" className="recovery-dialog" onHide={() => setShowAbandon(true)}><p className="danger-copy">This recovery key is the only backup if you lose your passkey. If you do not record it, you WILL permanently lose access to all your budget data. After this screen is closed, it is never accessible or recoverable by anyone again.</p><code className="recovery-code">{createdRecovery}</code><div className="button-row"><Button text label="Copy" icon="pi pi-copy" onClick={() => navigator.clipboard.writeText(createdRecovery)} /><Button text label="Print" icon="pi pi-print" onClick={() => window.print()} /><Button text label="Download" icon="pi pi-download" onClick={() => { const blob = new Blob(["Cipher Budget recovery key\n\n" + createdRecovery + "\n"], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "cipher-budget-recovery-key.txt"; link.click(); URL.revokeObjectURL(link.href); }} /></div><p>Store it in a password manager or another secure offline location. Do not share it or keep it in unsecured notes.</p><label htmlFor="confirm-recovery">Enter the complete recovery key to verify you recorded it.</label><InputText id="confirm-recovery" value={confirmRecovery} onChange={(event) => setConfirmRecovery(event.target.value)} autoComplete="off" className="full-width" />{notice && <p className="error">{notice}</p>}<Button label="I recorded it — secure my vault" icon="pi pi-check" loading={busy} disabled={busy} onClick={confirmCeremony} /><Button text severity="secondary" label="I need more time" disabled={busy} onClick={() => setShowAbandon(true)} /><Dialog visible={showAbandon} modal header="Leave vault setup?" onHide={() => setShowAbandon(false)}><p>If you leave without recording and verifying this key, all newly created encrypted vault data will be discarded. You will need to set up a new vault later.</p><Button severity="danger" label="Discard unverified vault" onClick={() => { setCreatedRecovery(""); setConfirmRecovery(""); setVault(null); setKey(null); setEnvelope(null); setShowAbandon(false); setNotice("Vault setup was abandoned. No financial data was saved."); }} /></Dialog></Dialog>
   </main>;
 }

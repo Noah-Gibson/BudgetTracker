@@ -13,13 +13,18 @@ const b64 = z.string().regex(/^[A-Za-z0-9_-]+$/).max(250_000);
 const writeSchema = z.object({ vaultId: z.string().uuid(), revision: z.number().int().positive(), ciphertext: b64, iv: z.string().regex(/^[A-Za-z0-9_-]{16}$/), tag: z.string().regex(/^[A-Za-z0-9_-]{22}$/), recoveryWrappedKey: z.string().min(20).max(500), recoverySalt: z.string().regex(/^[A-Za-z0-9_-]{22}$/) });
 
 export async function GET() {
-  const owner = await requireOwner(); if (!rateLimit(`vault-read:${owner}`, 80)) return NextResponse.json({ error: "Too many requests" }, { status: 429 }); await requireStepUp(owner);
+  // An opted-in trusted browser has a non-exportable local key and may unlock
+  // with its Google session alone. Reading ciphertext does not disclose the
+  // budget without that local key, recovery key, or passkey-derived wrapper.
+  const owner = await requireOwner(); if (!rateLimit(`vault-read:${owner}`, 80)) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   const value = await database().query.vaults.findFirst({ where: eq(vaults.ownerHandle, owner) });
   return NextResponse.json({ vault: value ?? null }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(request: Request) {
-  await requireSameOrigin(); const owner = await requireOwner(); if (!rateLimit(`vault-write:${owner}`, 40)) return NextResponse.json({ error: "Too many requests" }, { status: 429 }); await requireStepUp(owner);
+  // Writes from a trusted browser remain same-origin and Google-session
+  // bound. Destructive vault replacement still requires a fresh passkey below.
+  await requireSameOrigin(); const owner = await requireOwner(); if (!rateLimit(`vault-write:${owner}`, 40)) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   const input = writeSchema.parse(await request.json()); const db = database();
   const existing = await db.query.vaults.findFirst({ where: eq(vaults.ownerHandle, owner) });
   if (existing && input.revision !== existing.revision + 1) return NextResponse.json({ error: "revision_conflict", revision: existing.revision }, { status: 409 });

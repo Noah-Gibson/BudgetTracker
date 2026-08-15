@@ -15,7 +15,10 @@ export function normalizeRecoveryKey(value: string) { return value.replace(/[^A-
 
 export async function generateVaultKey() { return crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]); }
 export async function exportVaultKey(key: CryptoKey) { return new Uint8Array(await crypto.subtle.exportKey("raw", key)); }
-export async function importVaultKey(raw: Uint8Array) { return crypto.subtle.importKey("raw", source(raw), "AES-GCM", false, ["encrypt", "decrypt"]); }
+// A recovered key may be enrolled on an opted-in trusted browser. It remains
+// encrypted at rest; making this in-memory handle wrappable lets the browser
+// create that local envelope after recovery.
+export async function importVaultKey(raw: Uint8Array) { return crypto.subtle.importKey("raw", source(raw), "AES-GCM", true, ["encrypt", "decrypt"]); }
 
 async function recoveryKek(recovery: string, salt: Uint8Array) {
   const base = await crypto.subtle.importKey("raw", source(encoder.encode(normalizeRecoveryKey(recovery))), "PBKDF2", false, ["deriveKey"]);
