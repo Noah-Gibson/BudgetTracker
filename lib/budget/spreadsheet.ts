@@ -1,166 +1,69 @@
-import { addDays, bucketMeta, newId, totals, type Bucket, type BudgetPeriod, type BudgetVault, type ExpenseEntry, type IncomeEntry } from "./types";
+import { addDays, bucketMeta, clonePayMonth, newId, totals, upgradeVault, type Bucket, type BudgetVault, type ExpenseEntry, type LegacyBudgetPeriod, type LegacyBudgetVault, type V2BudgetVault } from "./types";
 
 const FORMAT_TITLE = "Cipher Budget Export";
-const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 3;
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 const MAX_IMPORT_ROWS = 10_000;
 const buckets: Bucket[] = ["needs", "goals", "wants"];
 
-function safeText(value: string) {
-  return /^[=+\-@]/.test(value) ? "'" + value : value;
-}
+function safeText(value: string) { return /^[=+\-@]/.test(value) ? "'" + value : value; }
+function valueText(value: unknown) { const text = typeof value === "string" ? value.trim() : String(value ?? "").trim(); return /^'(?=[=+\-@])/.test(text) ? text.slice(1) : text; }
+function requiredText(value: unknown, label: string) { const text = valueText(value); if (!text) throw new Error(`${label} is required in the imported workbook.`); return text; }
+function validDate(value: string) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T12:00:00`).getTime()); }
+function amountCents(value: unknown, label: string) { const amount = typeof value === "number" ? value : Number(valueText(value).replace(/[$,\s]/g, "")); if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) > Number.MAX_SAFE_INTEGER) throw new Error(`${label} must be a positive dollar amount.`); return Math.round(amount * 100); }
+function target(value: unknown, label: string) { const percentage = typeof value === "number" ? value : Number(valueText(value)); if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) throw new Error(`${label} must be between 0 and 100.`); return percentage; }
+function recurring(value: unknown) { const answer = valueText(value).toLowerCase(); if (answer !== "yes" && answer !== "no") throw new Error("Recurring monthly must be Yes or No."); return answer === "yes"; }
+function bucketFrom(value: unknown) { const category = valueText(value).toLowerCase(); const bucket: Bucket | undefined = category === "needs" ? "needs" : category === "goals" || category === "loans, savings & investing" ? "goals" : category === "wants" || category === "disposable" ? "wants" : undefined; if (!bucket) throw new Error("Category must be Needs, Loans, savings & investing, or Disposable."); return bucket; }
+function columnLabel(bucket: Bucket) { return bucket === "needs" ? "Needs target (%)" : bucket === "goals" ? "Loans, savings & investing target (%)" : "Disposable target (%)"; }
+function formatWorksheet(sheet: { getRow(index: number): { font: unknown; fill: unknown; alignment: unknown }; columns: Array<{ width?: number }> }, widths: number[]) { const header = sheet.getRow(1); header.font = { bold: true, color: { argb: "FFFFFFFF" } }; header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006A6A" } }; header.alignment = { vertical: "middle" }; widths.forEach((width, index) => { sheet.columns[index].width = width; }); }
+function rows(sheet: { rowCount: number; getRow(index: number): { getCell(column: number): { value: unknown } } } | undefined, name: string) { if (!sheet) throw new Error(`The ${name} sheet is missing.`); if (sheet.rowCount > MAX_IMPORT_ROWS + 1) throw new Error(`The ${name} sheet has too many rows.`); return Array.from({ length: Math.max(0, sheet.rowCount - 1) }, (_, index) => sheet.getRow(index + 2)); }
 
-function valueText(value: unknown) {
-  const text = typeof value === "string" ? value.trim() : String(value ?? "").trim();
-  return /^'(?=[=+\-@])/.test(text) ? text.slice(1) : text;
-}
-
-function requiredText(value: unknown, label: string) {
-  const text = valueText(value);
-  if (!text) throw new Error(`${label} is required in the imported workbook.`);
-  return text;
-}
-
-function validDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T12:00:00`).getTime());
-}
-
-function amountCents(value: unknown, label: string) {
-  const amount = typeof value === "number" ? value : Number(valueText(value).replace(/[$,\s]/g, ""));
-  if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) > Number.MAX_SAFE_INTEGER) throw new Error(`${label} must be a positive dollar amount.`);
-  return Math.round(amount * 100);
-}
-
-function target(value: unknown, label: string) {
-  const percentage = typeof value === "number" ? value : Number(valueText(value));
-  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) throw new Error(`${label} must be between 0 and 100.`);
-  return percentage;
-}
-
-function columnLabel(bucket: Bucket) {
-  return bucket === "needs" ? "Needs target (%)" : bucket === "goals" ? "Loans, savings & investing target (%)" : "Disposable target (%)";
-}
-
-function formatWorksheet(sheet: { getRow(index: number): { font: unknown; fill: unknown; alignment: unknown }; columns: Array<{ width?: number }> }, widths: number[]) {
-  const header = sheet.getRow(1);
-  header.font = { bold: true, color: { argb: "FFFFFFFF" } };
-  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006A6A" } };
-  header.alignment = { vertical: "middle" };
-  widths.forEach((width, index) => { sheet.columns[index].width = width; });
-}
-
-/** Creates a user-readable, portable snapshot. It is intentionally plaintext. */
+/** Creates a readable, intentionally plaintext backup of the encrypted vault. */
 export async function budgetWorkbook(vault: BudgetVault) {
-  const ExcelJS = await import("exceljs");
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Cipher Budget";
-  workbook.created = new Date();
-
+  const ExcelJS = await import("exceljs"); const workbook = new ExcelJS.Workbook(); workbook.creator = "Cipher Budget"; workbook.created = new Date();
   const readme = workbook.addWorksheet("Read me");
-  readme.addRows([
-    [FORMAT_TITLE, "Format version", FORMAT_VERSION],
-    ["Important", "This export contains readable financial data. Store it only in a location you trust."],
-    ["Import", "Use the Import spreadsheet button in Cipher Budget. Importing replaces the current vault with this workbook's periods and entries."],
-    ["Sheets", "Settings controls default targets. Pay Periods, Income, and Expenses contain the editable budget data."],
-  ]);
-  readme.columns = [{ width: 18 }, { width: 105 }, { width: 16 }];
-  readme.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-  readme.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006A6A" } };
-  readme.getColumn(2).alignment = { wrapText: true, vertical: "top" };
-
-  const settings = workbook.addWorksheet("Settings");
-  settings.addRow(["Needs target (%)", "Loans, savings & investing target (%)", "Disposable target (%)"]);
-  settings.addRow([vault.settings.defaultTargets.needs, vault.settings.defaultTargets.goals, vault.settings.defaultTargets.wants]);
-  formatWorksheet(settings, [18, 42, 24]);
-
-  const periods = workbook.addWorksheet("Pay Periods");
-  periods.addRow(["Pay period start", "Pay period end", ...buckets.map(columnLabel), "Total income", "Total expenses", "Remaining balance"]);
-  vault.periods.forEach((period) => {
-    const summary = totals(period);
-    periods.addRow([period.startDate, period.endDate, period.targetPercentages.needs, period.targetPercentages.goals, period.targetPercentages.wants, summary.income / 100, summary.expenses / 100, summary.remaining / 100]);
-  });
-  formatWorksheet(periods, [18, 18, 18, 42, 24, 16, 17, 19]);
-  periods.getColumn(6).numFmt = '"$"#,##0.00';
-  periods.getColumn(7).numFmt = '"$"#,##0.00';
-  periods.getColumn(8).numFmt = '"$"#,##0.00';
-
-  const income = workbook.addWorksheet("Income");
-  income.addRow(["Pay period start", "Income source", "Amount (USD)", "Date (optional)"]);
-  vault.periods.forEach((period) => period.incomes.forEach((entry) => income.addRow([period.startDate, safeText(entry.name), entry.amountCents / 100, entry.date ?? ""])));
-  formatWorksheet(income, [18, 36, 18, 18]);
-  income.getColumn(3).numFmt = '"$"#,##0.00';
-
-  const expenses = workbook.addWorksheet("Expenses");
-  expenses.addRow(["Pay period start", "Expense name", "Amount (USD)", "Date (optional)", "Category", "Recurring"]);
-  vault.periods.forEach((period) => period.expenses.forEach((entry) => expenses.addRow([period.startDate, safeText(entry.name), entry.amountCents / 100, entry.date ?? "", bucketMeta[entry.bucket].label, entry.recurring ? "Yes" : "No"])));
-  formatWorksheet(expenses, [18, 36, 18, 18, 30, 14]);
-  expenses.getColumn(3).numFmt = '"$"#,##0.00';
-
+  readme.addRows([[FORMAT_TITLE, "Format version", FORMAT_VERSION], ["Important", "This export contains readable financial data. Store it only in a location you trust."], ["Import", "Import replaces all current pay-month budgets, income, expenses, and recurring monthly expenses."], ["Sheets", "Pay Months holds budget totals, Income holds all income for each pay month, and Expenses includes recurring monthly entries."]]);
+  readme.columns = [{ width: 18 }, { width: 105 }, { width: 16 }]; readme.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } }; readme.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006A6A" } }; readme.getColumn(2).alignment = { wrapText: true, vertical: "top" };
+  const settings = workbook.addWorksheet("Settings"); settings.addRow(["Needs target (%)", "Loans, savings & investing target (%)", "Disposable target (%)"]); settings.addRow([vault.settings.defaultTargets.needs, vault.settings.defaultTargets.goals, vault.settings.defaultTargets.wants]); formatWorksheet(settings, [18, 42, 24]);
+  const months = workbook.addWorksheet("Pay Months"); months.addRow(["Pay month start", "Pay month end", ...buckets.map(columnLabel), "Total income", "Total expenses", "Remaining balance"]); vault.payMonths.forEach((month) => { const summary = totals(month); months.addRow([month.startDate, month.endDate, month.targetPercentages.needs, month.targetPercentages.goals, month.targetPercentages.wants, summary.income / 100, summary.expenses / 100, summary.remaining / 100]); }); formatWorksheet(months, [18, 18, 18, 42, 24, 16, 17, 19]); [6, 7, 8].forEach((index) => { months.getColumn(index).numFmt = '"$"#,##0.00'; });
+  const income = workbook.addWorksheet("Income"); income.addRow(["Pay month start", "Income source", "Amount (USD)", "Date (optional)"]); vault.payMonths.forEach((month) => month.incomes.forEach((entry) => income.addRow([month.startDate, safeText(entry.name), entry.amountCents / 100, entry.date ?? ""]))); formatWorksheet(income, [18, 36, 18, 18]); income.getColumn(3).numFmt = '"$"#,##0.00';
+  const expenses = workbook.addWorksheet("Expenses"); expenses.addRow(["Pay month start", "Expense name", "Amount (USD)", "Date", "Category", "Recurring monthly"]); vault.payMonths.forEach((month) => month.expenses.forEach((entry) => expenses.addRow([month.startDate, safeText(entry.name), entry.amountCents / 100, entry.date ?? "", bucketMeta[entry.bucket].label, entry.templateId ? "Yes" : "No"]))); formatWorksheet(expenses, [18, 36, 18, 18, 30, 20]); expenses.getColumn(3).numFmt = '"$"#,##0.00';
   return new Uint8Array(await workbook.xlsx.writeBuffer());
 }
 
-function worksheetRows(sheet: { rowCount: number; getRow(index: number): { getCell(column: number): { value: unknown } } } | undefined, name: string) {
-  if (!sheet) throw new Error(`The ${name} sheet is missing.`);
-  if (sheet.rowCount > MAX_IMPORT_ROWS + 1) throw new Error(`The ${name} sheet has too many rows.`);
-  return Array.from({ length: Math.max(0, sheet.rowCount - 1) }, (_, index) => sheet.getRow(index + 2));
+function parseSettings(workbook: { getWorksheet(name: string): { rowCount: number; getRow(index: number): { getCell(column: number): { value: unknown } } } | undefined }) { const settingRows = rows(workbook.getWorksheet("Settings"), "Settings"); if (settingRows.length !== 1) throw new Error("The Settings sheet must contain exactly one settings row."); const row = settingRows[0]; return { needs: target(row.getCell(1).value, "Needs target"), goals: target(row.getCell(2).value, "Loans, savings & investing target"), wants: target(row.getCell(3).value, "Disposable target") }; }
+
+function parseV3(workbook: { getWorksheet(name: string): { rowCount: number; getRow(index: number): { getCell(column: number): { value: unknown } } } | undefined }): BudgetVault {
+  const vault: BudgetVault = { version: 3, settings: { defaultTargets: parseSettings(workbook) }, payMonths: [], recurringExpenses: [] }; const byStart = new Map<string, BudgetVault["payMonths"][number]>();
+  rows(workbook.getWorksheet("Pay Months"), "Pay Months").forEach((row) => { const start = requiredText(row.getCell(1).value, "Pay month start date"); const end = requiredText(row.getCell(2).value, "Pay month end date"); if (!validDate(start) || !validDate(end) || addDays(start, 27) !== end) throw new Error(`Pay month ${start} must be exactly 28 days long.`); if (byStart.has(start)) throw new Error(`Pay month ${start} appears more than once.`); const month = clonePayMonth(undefined, start, { needs: target(row.getCell(3).value, "Needs target"), goals: target(row.getCell(4).value, "Loans, savings & investing target"), wants: target(row.getCell(5).value, "Disposable target") }, []); byStart.set(start, month); vault.payMonths.push(month); });
+  if (!vault.payMonths.length) throw new Error("The workbook does not contain a pay-month budget to import.");
+  rows(workbook.getWorksheet("Income"), "Income").forEach((row) => { const month = byStart.get(requiredText(row.getCell(1).value, "Income pay month start")); if (!month) throw new Error("Income references a missing pay month."); const date = valueText(row.getCell(4).value); if (date && !validDate(date)) throw new Error("Income date must use YYYY-MM-DD."); month.incomes.push({ id: newId(), name: requiredText(row.getCell(2).value, "Income source"), amountCents: amountCents(row.getCell(3).value, "Income amount"), ...(date ? { date } : {}) }); });
+  rows(workbook.getWorksheet("Expenses"), "Expenses").forEach((row) => { const month = byStart.get(requiredText(row.getCell(1).value, "Expense pay month start")); if (!month) throw new Error("Expense references a missing pay month."); const date = valueText(row.getCell(4).value); const isRecurring = recurring(row.getCell(6).value); if (isRecurring && !date) throw new Error("A recurring monthly expense must include a date."); if (date && (!validDate(date) || date < month.startDate || date > month.endDate)) throw new Error("Expense date must be inside its pay month."); const entry: ExpenseEntry = { id: newId(), name: requiredText(row.getCell(2).value, "Expense name"), amountCents: amountCents(row.getCell(3).value, "Expense amount"), bucket: bucketFrom(row.getCell(5).value), ...(date ? { date } : {}) }; if (isRecurring) { const dueDay = Number(date.slice(8, 10)); const template = vault.recurringExpenses.find((item) => item.name === entry.name && item.amountCents === entry.amountCents && item.bucket === entry.bucket && item.dueDay === dueDay) ?? { id: newId(), name: entry.name, amountCents: entry.amountCents, bucket: entry.bucket, dueDay, active: true }; if (!vault.recurringExpenses.some((item) => item.id === template.id)) vault.recurringExpenses.push(template); entry.templateId = template.id; } month.expenses.push(entry); });
+  vault.payMonths.sort((left, right) => left.startDate.localeCompare(right.startDate)); return vault;
 }
 
-/** Parses only the app's own format. No spreadsheet formulas are evaluated. */
+function parseV2(workbook: { getWorksheet(name: string): { rowCount: number; getRow(index: number): { getCell(column: number): { value: unknown } } } | undefined }): BudgetVault {
+  const legacy: V2BudgetVault = { version: 2, settings: { defaultTargets: parseSettings(workbook) }, cycles: [], recurringBills: [] }; const byStart = new Map<string, V2BudgetVault["cycles"][number]>();
+  rows(workbook.getWorksheet("Budget Cycles"), "Budget Cycles").forEach((row) => { const start = requiredText(row.getCell(1).value, "Cycle start date"); const end = requiredText(row.getCell(2).value, "Cycle end date"); if (!validDate(start) || !validDate(end) || addDays(start, 27) !== end) throw new Error(`Budget cycle ${start} must be exactly 28 days long.`); const cycle = { id: newId(), startDate: start, endDate: end, targetPercentages: { needs: target(row.getCell(3).value, "Needs target"), goals: target(row.getCell(4).value, "Loans, savings & investing target"), wants: target(row.getCell(5).value, "Disposable target") }, payPeriods: [{ id: newId(), startDate: start, endDate: addDays(start, 13), incomes: [] }, { id: newId(), startDate: addDays(start, 14), endDate: end, incomes: [] }] as V2BudgetVault["cycles"][number]["payPeriods"], expenses: [] }; legacy.cycles.push(cycle); byStart.set(start, cycle); });
+  rows(workbook.getWorksheet("Pay Period Income"), "Pay Period Income").forEach((row) => { const cycle = byStart.get(requiredText(row.getCell(1).value, "Income cycle start")); const index = Number(row.getCell(2).value) - 1; if (!cycle || (index !== 0 && index !== 1)) throw new Error("Income references a missing pay period."); const date = valueText(row.getCell(7).value); cycle.payPeriods[index].incomes.push({ id: newId(), name: requiredText(row.getCell(5).value, "Income source"), amountCents: amountCents(row.getCell(6).value, "Income amount"), ...(date ? { date } : {}) }); });
+  const byName = new Map<string, string>();
+  rows(workbook.getWorksheet("Recurring Bills"), "Recurring Bills").forEach((row) => { const dueDay = Number(row.getCell(4).value); if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) throw new Error("Recurring bill due day must be 1 through 31."); const bill = { id: newId(), name: requiredText(row.getCell(1).value, "Bill name"), amountCents: amountCents(row.getCell(2).value, "Bill amount"), bucket: bucketFrom(row.getCell(3).value), dueDay, active: valueText(row.getCell(5).value).toLowerCase() !== "no" }; legacy.recurringBills.push(bill); byName.set(bill.name, bill.id); });
+  rows(workbook.getWorksheet("Expense Instances"), "Expense Instances").forEach((row) => { const cycle = byStart.get(requiredText(row.getCell(1).value, "Expense cycle start")); if (!cycle) throw new Error("Expense references a missing budget cycle."); const date = valueText(row.getCell(4).value); const entry: ExpenseEntry = { id: newId(), name: requiredText(row.getCell(2).value, "Expense name"), amountCents: amountCents(row.getCell(3).value, "Expense amount"), bucket: bucketFrom(row.getCell(5).value), ...(date ? { date } : {}) }; const templateName = valueText(row.getCell(7).value); if (templateName) entry.templateId = byName.get(templateName); cycle.expenses.push(entry); });
+  return upgradeVault(legacy).vault;
+}
+
+function parseV1(workbook: { getWorksheet(name: string): { rowCount: number; getRow(index: number): { getCell(column: number): { value: unknown } } } | undefined }): BudgetVault {
+  const legacy: LegacyBudgetVault = { version: 1, settings: { defaultTargets: parseSettings(workbook) }, periods: [] }; const byStart = new Map<string, LegacyBudgetPeriod>();
+  rows(workbook.getWorksheet("Pay Periods"), "Pay Periods").forEach((row) => { const start = requiredText(row.getCell(1).value, "Pay period start date"); const end = requiredText(row.getCell(2).value, "Pay period end date"); if (!validDate(start) || addDays(start, 13) !== end) throw new Error(`Pay period ${start} must be exactly 14 days long.`); const period: LegacyBudgetPeriod = { id: newId(), startDate: start, endDate: end, targetPercentages: { needs: target(row.getCell(3).value, "Needs target"), goals: target(row.getCell(4).value, "Loans, savings & investing target"), wants: target(row.getCell(5).value, "Disposable target") }, incomes: [], expenses: [] }; legacy.periods.push(period); byStart.set(start, period); });
+  rows(workbook.getWorksheet("Income"), "Income").forEach((row) => { const period = byStart.get(requiredText(row.getCell(1).value, "Income pay period start")); if (!period) throw new Error("Income references a missing pay period."); const date = valueText(row.getCell(4).value); period.incomes.push({ id: newId(), name: requiredText(row.getCell(2).value, "Income source"), amountCents: amountCents(row.getCell(3).value, "Income amount"), ...(date ? { date } : {}) }); });
+  rows(workbook.getWorksheet("Expenses"), "Expenses").forEach((row) => { const period = byStart.get(requiredText(row.getCell(1).value, "Expense pay period start")); if (!period) throw new Error("Expense references a missing pay period."); const date = valueText(row.getCell(4).value); period.expenses.push({ id: newId(), name: requiredText(row.getCell(2).value, "Expense name"), amountCents: amountCents(row.getCell(3).value, "Expense amount"), bucket: bucketFrom(row.getCell(5).value), recurring: recurring(row.getCell(6).value), ...(date ? { date } : {}) }); });
+  return upgradeVault(legacy).vault;
+}
+
+/** Imports the current v3 backup plus earlier v1 and v2 exports. */
 export async function importBudgetWorkbook(file: File): Promise<BudgetVault> {
-  if (file.size === 0 || file.size > MAX_IMPORT_BYTES) throw new Error("Choose a Cipher Budget spreadsheet smaller than 5 MB.");
-  const ExcelJS = await import("exceljs");
-  const workbook = new ExcelJS.Workbook();
-  try {
-    await workbook.xlsx.load(await file.arrayBuffer());
-  } catch {
-    throw new Error("This file is not a valid Cipher Budget .xlsx export.");
-  }
-  const readme = workbook.getWorksheet("Read me");
-  if (valueText(readme?.getCell("A1").value) !== FORMAT_TITLE || Number(readme?.getCell("C1").value) !== FORMAT_VERSION) throw new Error("This spreadsheet is not a supported Cipher Budget export.");
-
-  const settingsRows = worksheetRows(workbook.getWorksheet("Settings"), "Settings");
-  if (settingsRows.length !== 1) throw new Error("The Settings sheet must contain exactly one settings row.");
-  const settingsRow = settingsRows[0];
-  const imported: BudgetVault = {
-    version: 1,
-    settings: { defaultTargets: { needs: target(settingsRow.getCell(1).value, "Needs target"), goals: target(settingsRow.getCell(2).value, "Loans, savings & investing target"), wants: target(settingsRow.getCell(3).value, "Disposable target") } },
-    periods: [],
-  };
-  const byStart = new Map<string, BudgetPeriod>();
-  worksheetRows(workbook.getWorksheet("Pay Periods"), "Pay Periods").forEach((row) => {
-    const startDate = requiredText(row.getCell(1).value, "Pay period start date");
-    const endDate = requiredText(row.getCell(2).value, "Pay period end date");
-    if (!validDate(startDate) || !validDate(endDate) || addDays(startDate, 13) !== endDate) throw new Error(`Pay period ${startDate} must be exactly 14 days long.`);
-    if (byStart.has(startDate)) throw new Error(`Pay period ${startDate} appears more than once.`);
-    const period: BudgetPeriod = { id: newId(), startDate, endDate, targetPercentages: { needs: target(row.getCell(3).value, `Needs target for ${startDate}`), goals: target(row.getCell(4).value, `Loans, savings & investing target for ${startDate}`), wants: target(row.getCell(5).value, `Disposable target for ${startDate}`) }, incomes: [], expenses: [] };
-    byStart.set(startDate, period);
-    imported.periods.push(period);
-  });
-  if (!imported.periods.length) throw new Error("The workbook does not contain a pay period to import.");
-
-  worksheetRows(workbook.getWorksheet("Income"), "Income").forEach((row) => {
-    const startDate = requiredText(row.getCell(1).value, "Income pay period start date");
-    const period = byStart.get(startDate);
-    if (!period) throw new Error(`Income references the missing pay period ${startDate}.`);
-    const date = valueText(row.getCell(4).value);
-    if (date && !validDate(date)) throw new Error(`Income date for ${startDate} must use YYYY-MM-DD.`);
-    const entry: IncomeEntry = { id: newId(), name: requiredText(row.getCell(2).value, "Income source"), amountCents: amountCents(row.getCell(3).value, "Income amount"), ...(date ? { date } : {}) };
-    period.incomes.push(entry);
-  });
-  worksheetRows(workbook.getWorksheet("Expenses"), "Expenses").forEach((row) => {
-    const startDate = requiredText(row.getCell(1).value, "Expense pay period start date");
-    const period = byStart.get(startDate);
-    if (!period) throw new Error(`Expense references the missing pay period ${startDate}.`);
-    const date = valueText(row.getCell(4).value);
-    if (date && !validDate(date)) throw new Error(`Expense date for ${startDate} must use YYYY-MM-DD.`);
-    const category = valueText(row.getCell(5).value).toLowerCase();
-    const bucket: Bucket | undefined = category === "needs" ? "needs" : category === "goals" || category === "loans, savings & investing" ? "goals" : category === "wants" || category === "disposable" ? "wants" : undefined;
-    if (!bucket) throw new Error("Expense category must be Needs, Loans, savings & investing, or Disposable.");
-    const recurring = valueText(row.getCell(6).value).toLowerCase();
-    if (recurring !== "yes" && recurring !== "no") throw new Error("Recurring must be Yes or No.");
-    const entry: ExpenseEntry = { id: newId(), name: requiredText(row.getCell(2).value, "Expense name"), amountCents: amountCents(row.getCell(3).value, "Expense amount"), bucket, recurring: recurring === "yes", ...(date ? { date } : {}) };
-    period.expenses.push(entry);
-  });
-  imported.periods.sort((left, right) => left.startDate.localeCompare(right.startDate));
-  return imported;
+  if (file.size === 0 || file.size > MAX_IMPORT_BYTES) throw new Error("Choose a Cipher Budget spreadsheet smaller than 5 MB."); const ExcelJS = await import("exceljs"); const workbook = new ExcelJS.Workbook();
+  try { await workbook.xlsx.load(await file.arrayBuffer()); } catch { throw new Error("This file is not a valid Cipher Budget .xlsx export."); }
+  const readme = workbook.getWorksheet("Read me"); if (valueText(readme?.getCell("A1").value) !== FORMAT_TITLE) throw new Error("This spreadsheet is not a supported Cipher Budget export.");
+  const version = Number(readme?.getCell("C1").value); if (version === 3) return parseV3(workbook); if (version === 2) return parseV2(workbook); if (version === 1) return parseV1(workbook); throw new Error("This spreadsheet format version is not supported.");
 }

@@ -1,22 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { clonePeriod, createEmptyVault, defaultTargets, totals } from "@/lib/budget/types";
+import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
-describe("budget calculations", () => {
-  it("calculates income, expenses, and balances in integer cents", () => {
-    const period = clonePeriod(undefined, "2026-08-14", defaultTargets);
-    period.incomes.push({ id: "income", name: "Pay", amountCents: 200000 });
-    period.expenses.push({ id: "rent", name: "Rent", amountCents: 80000, bucket: "needs", recurring: true });
-    period.expenses.push({ id: "fund", name: "Fund", amountCents: 20000, bucket: "goals", recurring: true });
-    const result = totals(period);
-    expect(result).toMatchObject({ income: 200000, expenses: 100000, remaining: 100000 });
-    expect(result.byBucket("needs")).toBe(80000);
+describe("pay-month budgets", () => {
+  it("creates a 28-day pay month with one income list and cycle-wide totals", () => {
+    const month = clonePayMonth(undefined, "2026-08-14", createEmptyVault().settings.defaultTargets, []);
+    month.incomes.push({ id: "first", name: "First pay", amountCents: 200000 }, { id: "second", name: "Second pay", amountCents: 200000 });
+    month.expenses.push({ id: "rent", name: "Rent", amountCents: 120000, bucket: "needs", date: "2026-09-01" });
+    expect(month.endDate).toBe("2026-09-10");
+    expect(totals(month)).toMatchObject({ income: 400000, expenses: 120000, remaining: 280000 });
   });
 
-  it("copies income and only recurring expenses into a fresh period", () => {
-    const prior = clonePeriod(undefined, "2026-08-14", defaultTargets);
-    prior.incomes.push({ id: "i", name: "Pay", amountCents: 200000 });
-    prior.expenses.push({ id: "a", name: "Rent", amountCents: 80000, bucket: "needs", recurring: true }, { id: "b", name: "Dinner", amountCents: 5000, bucket: "wants", recurring: false });
-    const next = clonePeriod(prior, "2026-08-28", createEmptyVault().settings.defaultTargets);
-    expect(next.endDate).toBe("2026-09-10"); expect(next.incomes).toHaveLength(1); expect(next.expenses).toHaveLength(1); expect(next.expenses[0].name).toBe("Rent");
+  it("copies all income and schedules recurring monthly expenses once", () => {
+    const vault = createEmptyVault(); const recurring = { id: "rent", name: "Rent", amountCents: 120000, bucket: "needs" as const, dueDay: 31, active: true };
+    const first = clonePayMonth(undefined, "2026-01-15", vault.settings.defaultTargets, [recurring]);
+    first.incomes.push({ id: "one", name: "Pay", amountCents: 100000 }, { id: "two", name: "Pay", amountCents: 110000 });
+    const next = clonePayMonth(first, "2026-02-12", vault.settings.defaultTargets, [recurring]);
+    expect(next.incomes.map((entry) => entry.amountCents)).toEqual([100000, 110000]);
+    expect(next.expenses).toHaveLength(1); expect(next.expenses[0].date).toBe("2026-02-28");
+    expect(dueDateForMonth(2028, 1, 31)).toBe("2028-02-29");
+    expect(dueDatesWithin("2026-02-12", "2026-03-11", 1)).toEqual(["2026-03-01"]);
+  });
+
+  it("consolidates legacy entries and creates dated recurring expenses locally", () => {
+    const legacy: LegacyBudgetVault = { version: 1, settings: { defaultTargets: { needs: 50, goals: 30, wants: 20 } }, periods: [
+      { id: "one", startDate: "2026-01-01", endDate: "2026-01-14", targetPercentages: { needs: 50, goals: 30, wants: 20 }, incomes: [{ id: "income-one", name: "Pay", amountCents: 100000 }], expenses: [{ id: "rent-one", name: "Rent", amountCents: 80000, bucket: "needs", recurring: true, date: "2026-01-05" }] },
+      { id: "two", startDate: "2026-01-15", endDate: "2026-01-28", targetPercentages: { needs: 50, goals: 30, wants: 20 }, incomes: [{ id: "income-two", name: "Pay", amountCents: 100000 }], expenses: [{ id: "food", name: "Food", amountCents: 10000, bucket: "needs", recurring: false }] }
+    ] };
+    const upgraded = upgradeVault(legacy).vault;
+    expect(upgraded.version).toBe(3); expect(upgraded.payMonths).toHaveLength(1); expect(upgraded.payMonths[0].incomes).toHaveLength(2); expect(upgraded.payMonths[0].expenses).toHaveLength(2); expect(upgraded.recurringExpenses[0]).toMatchObject({ name: "Rent", dueDay: 5 });
   });
 });

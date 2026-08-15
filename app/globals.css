@@ -15,6 +15,8 @@ button { touch-action: manipulation; }
 .landing-copy, .security-panel { min-width: 0; }
 .landing-copy { max-width: 680px; }
 .eyebrow { margin: 0 0 .5rem; color: var(--teal); font-size: .74rem; font-weight: 800; letter-spacing: .12em; }
+.pay-month-info { display: inline-grid; place-items: center; width: 1.15rem; height: 1.15rem; margin-left: .2rem; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; font: inherit; cursor: help; vertical-align: middle; }
+.pay-month-info:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .landing h1, .unlock-card h1, .period-toolbar h1, .empty-state h1 { margin: 0 0 1.15rem; font-size: clamp(2rem, 10vw, 4.2rem); line-height: 1.05; letter-spacing: -.05em; }
 .landing-copy > p:not(.eyebrow) { margin: 0 0 1.5rem; color: var(--muted); font-size: 1.08rem; line-height: 1.65; }
 .security-panel { padding: 1.5rem; border-radius: 22px; background: var(--teal); color: #ecfffc; box-shadow: var(--shadow); }
@@ -65,6 +67,14 @@ button { touch-action: manipulation; }
 .summary-card.positive strong { color: var(--teal-dark); }
 .income-panel { margin-bottom: .8rem; }
 .income-panel .p-card-title { font-size: 1rem; }
+.paycheck-grid { display: grid; gap: .8rem; margin-bottom: .8rem; }
+.recurring-bills { margin-top: .8rem; }
+.recurring-bills .p-card-title { font-size: 1rem; }
+.recurring-form select { width: 100%; min-height: 2.6rem; padding: .55rem .65rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); }
+.migration-candidates { display: grid; gap: .75rem; margin: 1rem 0; }
+.migration-candidates > div { display: grid; grid-template-columns: minmax(0, 1fr) 7.5rem; align-items: center; gap: .75rem; }
+.migration-candidates span { display: grid; min-width: 0; gap: .15rem; }
+.migration-candidates small { color: var(--muted); }
 .bucket-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: .8rem; }
 .bucket-card { border-top: 5px solid var(--teal); }
 .bucket-card.goals { border-top-color: #566ec5; }
@@ -140,6 +150,10 @@ button { touch-action: manipulation; }
   .security-settings { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .security-settings > div { align-items: center; }
   .security-settings .p-button { width: auto; }
+  .paycheck-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .recurring-form { grid-template-columns: minmax(0, 1.2fr) minmax(8rem, .7fr) minmax(10rem, .8fr) minmax(7rem, .45fr); align-items: end; }
+  .recurring-form .recurring-notes { grid-column: 1 / -1; }
+  .recurring-form .form-buttons { grid-column: 1 / -1; }
   .data-tools { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .data-tool-actions { flex-wrap: nowrap; }
   .data-tool-actions .p-button { flex: 0 0 auto; }

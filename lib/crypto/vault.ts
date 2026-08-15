@@ -1,4 +1,4 @@
-import type { BudgetVault } from "@/lib/budget/types";
+import type { BudgetVault, VaultDocument } from "@/lib/budget/types";
 
 export type Envelope = { ciphertext: string; iv: string; tag: string; revision: number; vaultId: string; recoveryWrappedKey?: string; recoverySalt?: string };
 const encoder = new TextEncoder();
@@ -60,11 +60,11 @@ export async function encryptVault(vault: BudgetVault, key: CryptoKey, vaultId: 
   return { ciphertext: bytesToB64(output.slice(0, -16)), tag: bytesToB64(output.slice(-16)), iv: bytesToB64(iv) };
 }
 
-export async function decryptVault(envelope: Envelope, key: CryptoKey): Promise<BudgetVault> {
+export async function decryptVault(envelope: Envelope, key: CryptoKey): Promise<VaultDocument> {
   try {
     const body = b64ToBytes(envelope.ciphertext); const tag = b64ToBytes(envelope.tag); const joined = new Uint8Array(body.length + tag.length); joined.set(body); joined.set(tag, body.length);
     const value = await crypto.subtle.decrypt({ name: "AES-GCM", iv: source(b64ToBytes(envelope.iv)), additionalData: source(aad(envelope.vaultId, envelope.revision)), tagLength: 128 }, key, source(joined));
-    return JSON.parse(decoder.decode(value)) as BudgetVault;
+    return JSON.parse(decoder.decode(value)) as VaultDocument;
   } catch {
     // AES-GCM intentionally gives a generic error for a wrong key or modified
     // ciphertext. Give the user a clear, non-sensitive explanation instead.
