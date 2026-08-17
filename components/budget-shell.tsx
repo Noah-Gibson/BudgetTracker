@@ -179,7 +179,6 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [showAbandon, setShowAbandon] = useState(false);
-  const [lastActivity, setLastActivity] = useState(Date.now());
   const [browserReady, setBrowserReady] = useState(false);
   const [autoUnlocking, setAutoUnlocking] = useState(false);
   const toast = useRef<Toast>(null);
@@ -199,13 +198,6 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     lock(message);
   }, [lock]);
 
-  useEffect(() => {
-    const activity = () => setLastActivity(Date.now());
-    window.addEventListener("pointerdown", activity); window.addEventListener("keydown", activity);
-    const timer = window.setInterval(() => { if (vault && Date.now() - lastActivity > 15 * 60_000) lockAndForgetBrowser("Vault locked after 15 minutes of inactivity. This browser was forgotten."); }, 30_000);
-    return () => { window.removeEventListener("pointerdown", activity); window.removeEventListener("keydown", activity); window.clearInterval(timer); };
-  }, [lastActivity, lockAndForgetBrowser, vault]);
-
   const fetchEnvelope = useCallback(async () => {
     const response = await fetch("/api/vault", { cache: "no-store" });
     if (!response.ok) throw new Error("Vault is not available. Verify your passkey first.");
@@ -221,7 +213,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         const unlocked = await unlockTrustedDevice(device);
         const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document); activeKey.current = unlocked; activeEnvelope.current = remote;
         if (document.version !== 3) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
-        setKey(unlocked); setEnvelope(remote); setVault(decrypted); setLastActivity(Date.now());
+        setKey(unlocked); setEnvelope(remote); setVault(decrypted);
         return;
       }
       const assertion = await requestPasskey("authentication", device.salt); const remote = await fetchEnvelope();
@@ -230,7 +222,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       const unlocked = await unwrapWithPasskey(device.wrappedKey, assertion.prf, b64ToBytes(device.salt));
       const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document); activeKey.current = unlocked; activeEnvelope.current = remote;
       if (document.version !== 3) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
-      setKey(unlocked); setEnvelope(remote); setVault(decrypted); setLastActivity(Date.now());
+      setKey(unlocked); setEnvelope(remote); setVault(decrypted);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to unlock the vault."); } finally { setBusy(false); }
   };
   useEffect(() => {
@@ -311,7 +303,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       }
       const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document); activeKey.current = unlocked; activeEnvelope.current = remote;
       if (document.version !== 3) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
-      setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(decrypted); setLastActivity(Date.now());
+      setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(decrypted);
       toast.current?.show({ severity: "success", summary: addedPasskey ? "Browser passkey added" : "Vault unlocked", detail: remember ? "This trusted browser will also reopen with your Google session." : addedPasskey ? "Keep your backup method available if this browser is forgotten." : `Unlocked with ${source}.` });
     } catch (error) { setNotice(error instanceof Error ? error.message : "The recovery key could not unlock this vault."); } finally { setBusy(false); }
   };
