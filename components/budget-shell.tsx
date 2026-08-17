@@ -303,6 +303,14 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       }
       const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document); activeKey.current = unlocked; activeEnvelope.current = remote;
       if (document.version !== 3) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
+      // A Drive restore has just proved both that its package belongs to this
+      // vault and that its recovery secret unwraps the current vault key.
+      // Preserve that verified status for the unlocked workspace; otherwise a
+      // prior manual-key vault incorrectly offers Drive migration again.
+      if (expectedVaultId === remote.vaultId) {
+        setDriveBackupStatus("verified");
+        setStaleDriveVaultId(null);
+      }
       setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(decrypted);
       toast.current?.show({ severity: "success", summary: addedPasskey ? "Browser passkey added" : "Vault unlocked", detail: remember ? "This trusted browser will also reopen with your Google session." : addedPasskey ? "Keep your backup method available if this browser is forgotten." : `Unlocked with ${source}.` });
     } catch (error) { setNotice(error instanceof Error ? error.message : "The recovery key could not unlock this vault."); } finally { setBusy(false); }
