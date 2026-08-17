@@ -100,7 +100,15 @@ button { touch-action: manipulation; }
 .summary-card strong { display: block; overflow-wrap: anywhere; font-size: 1.3rem; }
 .summary-card.negative strong { color: var(--rose); }
 .summary-card.positive strong { color: var(--teal-dark); }
-.income-panel { margin-bottom: .8rem; }
+.income-panel { margin-top: .8rem; }
+.income-panel-compact .p-card-body { padding: .8rem 1rem; }
+.income-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.income-summary > div { display: grid; min-width: 0; gap: .1rem; }
+.income-summary span, .income-summary small { color: var(--muted); font-size: .82rem; }
+.income-summary strong { font-size: 1.12rem; }
+.income-summary .p-button { flex: 0 0 auto; }
+.income-dialog .p-dialog-content { display: grid; gap: .8rem; }
+.income-dialog .p-dialog-content > p { margin: 0; }
 .drive-backup-settings { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem auto 3rem; padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; width: min(calc(100% - 2rem), 1440px); }
 .drive-backup-settings > div:first-child { display: flex; min-width: 0; align-items: flex-start; gap: .75rem; }
 .drive-backup-settings i { color: var(--teal); font-size: 1.2rem; }
