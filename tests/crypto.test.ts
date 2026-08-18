@@ -7,9 +7,10 @@ describe("encrypted vault envelope", () => {
     const key = await generateVaultKey();
     const recovery = "private-recovery-key-that-never-leaves-the-browser";
     const wrapper = await wrapWithRecovery(key, recovery);
-    const encrypted = await encryptVault(createEmptyVault(), key, "e6c6dd2d-17e2-4653-b307-8ec93d8c3e07", 1);
+    const vault = { ...createEmptyVault(), recoveryProvider: "google-drive" as const };
+    const encrypted = await encryptVault(vault, key, "e6c6dd2d-17e2-4653-b307-8ec93d8c3e07", 1);
     const unlocked = await unwrapWithRecovery(recovery, wrapper.recoverySalt, wrapper.recoveryWrappedKey);
-    await expect(decryptVault({ ...encrypted, ...wrapper, vaultId: "e6c6dd2d-17e2-4653-b307-8ec93d8c3e07", revision: 1 }, unlocked)).resolves.toMatchObject({ version: 3 });
+    await expect(decryptVault({ ...encrypted, ...wrapper, vaultId: "e6c6dd2d-17e2-4653-b307-8ec93d8c3e07", revision: 1 }, unlocked)).resolves.toMatchObject({ version: 3, recoveryProvider: "google-drive" });
     const altered = `${encrypted.ciphertext[0] === "A" ? "B" : "A"}${encrypted.ciphertext.slice(1)}`;
     await expect(decryptVault({ ...encrypted, ...wrapper, ciphertext: altered, vaultId: "e6c6dd2d-17e2-4653-b307-8ec93d8c3e07", revision: 1 }, unlocked)).rejects.toThrow();
   });

@@ -301,8 +301,10 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         const trustedDevice = await rememberTrustedDevice(unlocked);
         localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
       }
-      const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document); activeKey.current = unlocked; activeEnvelope.current = remote;
-      if (document.version !== 3) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
+      const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document);
+      const openedVault = expectedVaultId === remote.vaultId && decrypted.recoveryProvider !== "google-drive" ? { ...decrypted, recoveryProvider: "google-drive" as const } : decrypted;
+      activeKey.current = unlocked; activeEnvelope.current = remote;
+      if (document.version !== 3 || openedVault !== decrypted) void save(openedVault).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
       // A Drive restore has just proved both that its package belongs to this
       // vault and that its recovery secret unwraps the current vault key.
       // Preserve that verified status for the unlocked workspace; otherwise a
@@ -311,7 +313,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         setDriveBackupStatus("verified");
         setStaleDriveVaultId(null);
       }
-      setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(decrypted);
+      setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(openedVault);
       toast.current?.show({ severity: "success", summary: addedPasskey ? "Browser passkey added" : "Vault unlocked", detail: remember ? "This trusted browser will also reopen with your Google session." : addedPasskey ? "Keep your backup method available if this browser is forgotten." : `Unlocked with ${source}.` });
     } catch (error) { setNotice(error instanceof Error ? error.message : "The recovery key could not unlock this vault."); } finally { setBusy(false); }
   };
@@ -471,7 +473,9 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     setBusy(true); setNotice("");
     try {
       await saveDriveRecoveryBackup(driveBackup.vaultId, driveBackup.recoveryKey, beginDriveRecoveryAuthorization(email));
-      await save(vault);
+      const driveBackedVault = { ...vault, recoveryProvider: "google-drive" as const };
+      await save(driveBackedVault);
+      setVault(driveBackedVault);
       setDriveBackup(null); setDriveBackupStatus("verified"); setStaleDriveVaultId(null); setCreatedRecovery(""); setConfirmRecovery("");
       toast.current?.show({ severity: "success", summary: "Google Drive backup verified", detail: "Your encrypted budget is ready. Cipher Budget cannot access your Drive recovery secret." });
     } catch (error) { setNotice(error instanceof Error ? error.message : "Google Drive backup could not be completed."); } finally { setBusy(false); }
@@ -497,7 +501,16 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     if (!window.confirm("Remove the Google Drive recovery backup? You will need another recovery method before deleting it.")) return;
     if (busy) return;
     setBusy(true); setNotice("");
-    try { await removeDriveRecoveryBackup(); setDriveBackupStatus("unverified"); setStaleDriveVaultId(null); toast.current?.show({ severity: "success", summary: "Google Drive backup removed", detail: "Your encrypted vault remains available on this browser." }); }
+    try {
+      await removeDriveRecoveryBackup();
+      if (vault) {
+        const withoutDriveRecovery = { ...vault, recoveryProvider: undefined };
+        await save(withoutDriveRecovery);
+        setVault(withoutDriveRecovery);
+      }
+      setDriveBackupStatus("unverified"); setStaleDriveVaultId(null);
+      toast.current?.show({ severity: "success", summary: "Google Drive backup removed", detail: "Your encrypted vault remains available on this browser." });
+    }
     catch (error) { setNotice(error instanceof Error ? error.message : "Google Drive backup could not be removed."); } finally { setBusy(false); }
   };
   const removeStaleDriveBackup = async () => {
@@ -543,7 +556,8 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       const driveEnvelope = { ...currentEnvelope, ...newRecoveryWrapper };
       activeEnvelope.current = driveEnvelope;
       setEnvelope(driveEnvelope);
-      await save(vault);
+      const driveBackedVault = { ...vault, recoveryProvider: "google-drive" as const };
+      await save(driveBackedVault);
 
       // save() replaces the active envelope with its newly encrypted revision.
       // A conflict locks the vault instead, so never claim that the old manual
@@ -552,6 +566,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       if (!savedEnvelope || savedEnvelope.vaultId !== driveEnvelope.vaultId || savedEnvelope.revision !== driveEnvelope.revision + 1) {
         throw new Error("The vault changed before the recovery method could be updated. Your previous recovery key is still active; unlock it and try again.");
       }
+      setVault(driveBackedVault);
       setDriveBackupStatus("verified"); setStaleDriveVaultId(null);
       setShowDriveMigration(false);
       toast.current?.show({ severity: "success", summary: "Google Drive recovery enabled", detail: "A new recovery secret was verified in Google Drive. Your previous manual recovery key can no longer unlock this vault." });
@@ -584,7 +599,11 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   };
   const rememberedDevice = browserReady ? deviceEnvelope() : null;
   const hasDevice = Boolean(rememberedDevice);
-  const hasVerifiedDriveBackup = driveBackupStatus === "verified";
+  // A verified Drive restore/migration is also persisted inside the encrypted
+  // vault. Silent Google authorization may later be unavailable, but that
+  // should not make a known Drive-backed vault look unbacked. A confirmed
+  // stale package always wins and is never presented as a valid backup.
+  const hasVerifiedDriveBackup = driveBackupStatus !== "stale" && (driveBackupStatus === "verified" || vault?.recoveryProvider === "google-drive");
   const automaticallyUnlocking = Boolean(!browserReady || autoUnlocking || (rememberedDevice?.kind === "trusted-device" && !vault && !setup && !createdRecovery && !driveBackup && !attemptedRememberedUnlock.current));
 
   return <main className="app-shell"><Toast ref={toast} />
@@ -628,7 +647,7 @@ function PayMonthBoard({ vault, onChange }: { vault: BudgetVault; onChange: (vau
   const addMonth = () => { const previous = vault.payMonths.at(-1); const start = previous ? addDays(previous.endDate, 1) : firstStart; const next = clonePayMonth(previous, start, vault.settings.defaultTargets, vault.recurringExpenses); onChange({ ...vault, payMonths: [...vault.payMonths, next] }); setActiveId(next.id); };
   const deleteMonth = () => { if (!month || !window.confirm("Delete this pay-month budget and all of its entries? This cannot be undone.")) return; const index = vault.payMonths.findIndex((item) => item.id === month.id); const remaining = vault.payMonths.filter((item) => item.id !== month.id); onChange({ ...vault, payMonths: remaining }); setActiveId(remaining[Math.max(0, index - 1)]?.id ?? ""); setDialog(null); };
   const exportSpreadsheet = async () => { setTransferBusy(true); setTransferStatus(""); try { const bytes = await budgetWorkbook(vault); const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })); const link = document.createElement("a"); link.href = url; link.download = "cipher-budget-export.xlsx"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 0); setTransferStatus("Spreadsheet exported. It contains readable financial data—store it securely."); } catch (error) { setTransferStatus(error instanceof Error ? error.message : "Could not export the spreadsheet."); } finally { setTransferBusy(false); } };
-  const importSpreadsheet = async (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file || !window.confirm("Importing replaces all current pay-month budgets, income, expenses, and recurring monthly expenses. Continue?")) return; setTransferBusy(true); setTransferStatus(""); try { const imported = await importBudgetWorkbook(file); onChange(imported); setActiveId(imported.payMonths.at(-1)?.id ?? ""); setTransferStatus("Spreadsheet imported. Your encrypted vault is saving the imported budget."); } catch (error) { setTransferStatus(error instanceof Error ? error.message : "Could not import the spreadsheet."); } finally { setTransferBusy(false); } };
+  const importSpreadsheet = async (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file || !window.confirm("Importing replaces all current pay-month budgets, income, expenses, and recurring monthly expenses. Continue?")) return; setTransferBusy(true); setTransferStatus(""); try { const imported = await importBudgetWorkbook(file); onChange({ ...imported, recoveryProvider: vault.recoveryProvider }); setActiveId(imported.payMonths.at(-1)?.id ?? ""); setTransferStatus("Spreadsheet imported. Your encrypted vault is saving the imported budget."); } catch (error) { setTransferStatus(error instanceof Error ? error.message : "Could not import the spreadsheet."); } finally { setTransferBusy(false); } };
   if (!month) return <section className="empty-state"><h1>Start your first pay-month budget</h1><p>Choose the first day. Your budget will cover 28 days.</p><label className="field-label" htmlFor="first-pay-month-start">First budget start date</label><input id="first-pay-month-start" className="native-input" type="date" value={firstStart} onChange={(event) => setFirstStart(event.target.value)} /><Button label="Create pay-month budget" icon="pi pi-calendar-plus" onClick={addMonth} /></section>;
   const values = totals(month);
   return <section className="budget-board">
