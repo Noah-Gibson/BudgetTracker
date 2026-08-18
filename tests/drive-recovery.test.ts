@@ -44,4 +44,46 @@ describe("Google Drive recovery authorization", () => {
     expect(followUp.vaultId).toBe("vault-1");
     expect(prompts).toEqual(["none"]);
   });
+
+  it("uploads a dated spreadsheet using the separate visible-file scope and retains 30 backups", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID", "test-client-id.apps.googleusercontent.com");
+    const requestedScopes: string[] = [];
+    vi.stubGlobal("window", {
+      setTimeout,
+      clearTimeout,
+      google: {
+        accounts: {
+          oauth2: {
+            initTokenClient: (options: { scope: string; callback: (response: { access_token: string; expires_in: number; scope: string }) => void }) => ({
+              requestAccessToken: () => {
+                requestedScopes.push(options.scope);
+                options.callback({ access_token: "visible-file-token", expires_in: 300, scope: options.scope });
+              }
+            })
+          }
+        }
+      }
+    });
+    const files = Array.from({ length: 31 }, (_, index) => ({ id: `file-${index}`, name: `Cipher Budget backup — 2026-08-${String(31 - index).padStart(2, "0")}.xlsx`, createdTime: `2026-08-${String(31 - index).padStart(2, "0")}T00:00:00Z`, modifiedTime: "2026-08-01T00:00:00Z" }));
+    const responses = [
+      { id: "folder-id" },
+      { files: [] },
+      { id: "today-file" },
+      { files }
+    ];
+    const calls: Array<{ input: string; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
+      calls.push({ input, init });
+      return new Response(JSON.stringify(responses.shift() ?? {}), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+
+    const { beginDriveSpreadsheetAuthorization, saveDriveSpreadsheetBackup } = await import("@/lib/drive/recovery");
+    const result = await saveDriveSpreadsheetBackup({ bytes: new Uint8Array([1, 2, 3]), backupDate: "2026-08-31", authorization: beginDriveSpreadsheetAuthorization("person@example.com") });
+
+    expect(requestedScopes).toEqual(["https://www.googleapis.com/auth/drive.file"]);
+    expect(result).toMatchObject({ folderId: "folder-id", fileId: "today-file", backupDate: "2026-08-31" });
+    expect(calls.some((call) => call.input.includes("upload/drive/v3/files"))).toBe(true);
+    expect(calls.filter((call) => call.init?.method === "DELETE")).toHaveLength(1);
+    expect(calls.find((call) => call.init?.method === "DELETE")?.input).toContain("file-30");
+  });
 });

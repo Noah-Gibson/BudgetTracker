@@ -1,9 +1,14 @@
 "use client";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const FILE_NAME = "cipher-budget-recovery-v1.json";
 const MIME_TYPE = "application/vnd.cipher-budget.recovery+json";
 const GIS_SRC = "https://accounts.google.com/gsi/client";
+const SPREADSHEET_FOLDER_NAME = "Cipher Budget";
+const SPREADSHEET_FILE_PREFIX = "Cipher Budget backup — ";
+const SPREADSHEET_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const SPREADSHEET_MARKER = "cipher-budget-spreadsheet-backup-v1";
 
 export type DriveRecoveryPackage = { format: 1; vaultId: string; recoveryKey: string; createdAt: string };
 export type DriveBackupRemoval = "removed" | "not-found" | "different-vault";
@@ -15,8 +20,8 @@ type TokenResponse = { access_token?: string; error?: string; error_description?
 type TokenRequest = { prompt?: "" | "none" | "consent" };
 type TokenClient = { requestAccessToken: (options?: TokenRequest) => void };
 type GoogleIdentity = { accounts: { oauth2: { initTokenClient: (options: { client_id: string; scope: string; login_hint?: string; callback: (response: TokenResponse) => void; error_callback?: (error: { type?: string; message?: string }) => void }) => TokenClient } } };
-type TokenRequestOptions = { prompt?: "" | "none" | "consent"; loginHint?: string };
-type MemoryToken = { value: string; expiresAt: number; loginHint?: string };
+type TokenRequestOptions = { prompt?: "" | "none" | "consent"; loginHint?: string; scope?: string };
+type MemoryToken = { value: string; expiresAt: number; loginHint?: string; scopes: string[] };
 
 class DriveRecoveryError extends Error {
   constructor(message: string, readonly kind: "connect-required" | "missing-backup" | "unavailable" = "unavailable") { super(message); }
@@ -31,8 +36,14 @@ function clientId() {
 }
 
 function packageError(message = "Your Google Drive backup could not be used.", kind: DriveRecoveryError["kind"] = "unavailable") { return new DriveRecoveryError(message, kind); }
-let memoryToken: MemoryToken | null = null;
+const memoryTokens = new Set<MemoryToken>();
 const pendingTokenRequests = new Map<string, Promise<string>>();
+
+function requestedScopes(options: TokenRequestOptions) { return (options.scope ?? DRIVE_SCOPE).split(/\s+/).filter(Boolean); }
+function matchingMemoryToken(options: TokenRequestOptions) {
+  const scopes = requestedScopes(options);
+  return [...memoryTokens].find((token) => token.expiresAt > Date.now() + 10_000 && (!options.loginHint || token.loginHint === options.loginHint) && scopes.every((scope) => token.scopes.includes(scope)));
+}
 
 async function loadGoogleIdentity() {
   if (window.google?.accounts.oauth2) return window.google;
@@ -55,17 +66,18 @@ function requestDriveToken(options: TokenRequestOptions = {}) {
     const timeout = window.setTimeout(() => reject(packageError(options.prompt === "none" ? "Google Drive needs to be connected before restoring this vault." : "Google Drive access was not granted.", "connect-required")), 10_000);
     const finish = (callback: () => void) => { window.clearTimeout(timeout); callback(); };
     const client = google.accounts.oauth2.initTokenClient({
-      client_id: clientId(), scope: DRIVE_SCOPE, ...(options.loginHint ? { login_hint: options.loginHint } : {}),
+      client_id: clientId(), scope: options.scope ?? DRIVE_SCOPE, ...(options.loginHint ? { login_hint: options.loginHint } : {}),
       callback: (response) => {
         const token = response.access_token;
         if (!token) { finish(() => reject(packageError(response.error_description ?? (options.prompt === "none" ? "Google Drive needs to be connected before restoring this vault." : "Google Drive access was not granted."), "connect-required"))); return; }
         // Google may return a partial grant. Do not send a token to Drive when
         // the specific private app-data permission was declined or blocked.
-        if (response.scope && !response.scope.split(/\s+/).includes(DRIVE_SCOPE)) {
-          finish(() => reject(packageError("Google did not grant Cipher Budget permission to its private Drive app-data folder. Approve the requested Drive permission and try again.", "connect-required")));
+        const grantedScopes = response.scope?.split(/\s+/).filter(Boolean) ?? requestedScopes(options);
+        if (!requestedScopes(options).every((scope) => grantedScopes.includes(scope))) {
+          finish(() => reject(packageError("Google did not grant the requested Cipher Budget Google Drive permission. Approve the requested Drive permission and try again.", "connect-required")));
           return;
         }
-        memoryToken = { value: token, expiresAt: Date.now() + Math.max(30, response.expires_in ?? 300) * 1000, loginHint: options.loginHint };
+        memoryTokens.add({ value: token, expiresAt: Date.now() + Math.max(30, response.expires_in ?? 300) * 1000, loginHint: options.loginHint, scopes: grantedScopes });
         finish(() => resolve(token));
       },
       error_callback: (error) => finish(() => reject(packageError(error.type === "popup_failed_to_open" ? "Safari could not open Google’s authorization window. Open Cipher Budget in Safari instead of its Home Screen web app, then try Google Drive recovery again." : error.message ?? "Google Drive access was cancelled.", "connect-required")))
@@ -77,8 +89,9 @@ function requestDriveToken(options: TokenRequestOptions = {}) {
 function driveToken(options: TokenRequestOptions = {}) {
   // Tokens are intentionally memory-only. Reusing an unexpired token avoids a
   // second Google UX during one page visit without persisting account access.
-  if (memoryToken && memoryToken.expiresAt > Date.now() + 10_000 && (!options.loginHint || memoryToken.loginHint === options.loginHint)) return Promise.resolve(memoryToken.value);
-  const requestKey = `${options.prompt ?? "default"}:${options.loginHint ?? ""}`;
+  const memoryToken = matchingMemoryToken(options);
+  if (memoryToken) return Promise.resolve(memoryToken.value);
+  const requestKey = `${options.scope ?? DRIVE_SCOPE}:${options.prompt ?? "default"}:${options.loginHint ?? ""}`;
   const pending = pendingTokenRequests.get(requestKey);
   if (pending) return pending;
   const request = requestDriveToken(options).finally(() => pendingTokenRequests.delete(requestKey));
@@ -90,15 +103,19 @@ function driveToken(options: TokenRequestOptions = {}) {
 export function prepareDriveRecoveryAuthorization() { return loadGoogleIdentity(); }
 /** Starts Google authorization synchronously in the calling button handler. */
 export function beginDriveRecoveryAuthorization(loginHint?: string) { return driveToken({ prompt: "", loginHint }); }
+/** Starts visible spreadsheet-backup authorization from a user action. */
+export function beginDriveSpreadsheetAuthorization(loginHint?: string) { return driveToken({ prompt: "", loginHint, scope: DRIVE_FILE_SCOPE }); }
+/** Returns an in-memory visible-file token without opening Google UI. */
+export function cachedDriveSpreadsheetAuthorization(loginHint?: string) { return matchingMemoryToken({ loginHint, scope: DRIVE_FILE_SCOPE })?.value ?? null; }
 /** Clears the ephemeral Drive token when the account session ends. */
-export function clearDriveRecoveryAuthorization() { memoryToken = null; pendingTokenRequests.clear(); }
+export function clearDriveRecoveryAuthorization() { memoryTokens.clear(); pendingTokenRequests.clear(); }
 
 type DriveApiError = { error?: { message?: string; errors?: { reason?: string }[] } };
 async function driveFailure(response: Response) {
   const body = await response.clone().json().catch(() => null) as DriveApiError | null;
   const message = body?.error?.message ?? "";
   const reason = body?.error?.errors?.[0]?.reason ?? "";
-  if (response.status === 401) { memoryToken = null; return packageError("Google Drive needs to be connected again before restoring this vault.", "connect-required"); }
+  if (response.status === 401) { memoryTokens.clear(); return packageError("Google Drive needs to be connected again before restoring this vault.", "connect-required"); }
   if (response.status === 403 && (reason === "accessNotConfigured" || reason === "serviceDisabled" || /has not been used|is disabled/i.test(message))) {
     return packageError("The Google Drive API is not enabled for this Google Cloud project. Enable the Google Drive API, then try again.");
   }
@@ -195,4 +212,80 @@ export async function removeDriveRecoveryBackup(expectedVaultId?: string): Promi
   }
   await driveFetch(token, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(backup.id)}`, { method: "DELETE" });
   return "removed";
+}
+
+export type SpreadsheetBackupResult = { folderId: string; fileId: string; backupDate: string; backedUpAt: string };
+type DriveFile = { id: string; name: string; createdTime: string; modifiedTime: string };
+
+function spreadsheetQuery(folderId: string, extra = "") {
+  return [`'${folderId.replace(/'/g, "\\'")}' in parents`, "trashed = false", `appProperties has { key='cipherBudgetBackup' and value='${SPREADSHEET_MARKER}' }`, extra].filter(Boolean).join(" and ");
+}
+
+async function ensureSpreadsheetFolder(token: string, knownFolderId?: string) {
+  if (knownFolderId) {
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(knownFolderId)}?fields=id,mimeType,trashed,appProperties`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    if (response.ok) {
+      const folder = await response.json() as { id?: string; mimeType?: string; trashed?: boolean; appProperties?: Record<string, string> };
+      if (folder.id && folder.mimeType === "application/vnd.google-apps.folder" && !folder.trashed && folder.appProperties?.cipherBudgetBackupFolder === SPREADSHEET_MARKER) return folder.id;
+    } else if (response.status !== 404) {
+      throw await driveFailure(response);
+    }
+  }
+  const response = await driveFetch(token, "https://www.googleapis.com/drive/v3/files?fields=id", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: SPREADSHEET_FOLDER_NAME, mimeType: "application/vnd.google-apps.folder", appProperties: { cipherBudgetBackupFolder: SPREADSHEET_MARKER } })
+  });
+  const folder = await response.json() as { id?: string };
+  if (!folder.id) throw packageError("Google Drive did not create the Cipher Budget backup folder.");
+  return folder.id;
+}
+
+async function listSpreadsheetBackups(token: string, folderId: string) {
+  const query = new URLSearchParams({ q: spreadsheetQuery(folderId), fields: "files(id,name,createdTime,modifiedTime)", orderBy: "createdTime desc", pageSize: "100" });
+  const response = await driveFetch(token, `https://www.googleapis.com/drive/v3/files?${query}`);
+  const body = await response.json() as { files?: DriveFile[] };
+  return body.files ?? [];
+}
+
+function binaryMultipart(metadata: object, bytes: Uint8Array) {
+  const boundary = `cipher-budget-xlsx-${crypto.randomUUID()}`;
+  const body = new Blob([
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
+    `--${boundary}\r\nContent-Type: ${SPREADSHEET_MIME_TYPE}\r\n\r\n`,
+    new Uint8Array(bytes).buffer,
+    `\r\n--${boundary}--\r\n`
+  ], { type: `multipart/related; boundary=${boundary}` });
+  return { boundary, body };
+}
+
+/** Saves a readable, user-visible spreadsheet directly from the browser to Google Drive. */
+export async function saveDriveSpreadsheetBackup({ bytes, backupDate, folderId, authorization }: { bytes: Uint8Array; backupDate: string; folderId?: string; authorization: Promise<string> }) {
+  const token = await authorization;
+  const resolvedFolderId = await ensureSpreadsheetFolder(token, folderId);
+  const name = `${SPREADSHEET_FILE_PREFIX}${backupDate}.xlsx`;
+  const existing = (await listSpreadsheetBackups(token, resolvedFolderId)).find((file) => file.name === name);
+  const metadata = {
+    name,
+    mimeType: SPREADSHEET_MIME_TYPE,
+    ...(existing ? {} : { parents: [resolvedFolderId] }),
+    appProperties: { cipherBudgetBackup: SPREADSHEET_MARKER, backupDate }
+  };
+  const upload = binaryMultipart(metadata, bytes);
+  const endpoint = existing ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existing.id)}?uploadType=multipart&fields=id` : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id";
+  const response = await driveFetch(token, endpoint, { method: existing ? "PATCH" : "POST", headers: { "Content-Type": `multipart/related; boundary=${upload.boundary}` }, body: upload.body });
+  const saved = await response.json() as { id?: string };
+  if (!saved.id) throw packageError("Google Drive did not save the spreadsheet backup.");
+  const backups = await listSpreadsheetBackups(token, resolvedFolderId);
+  await Promise.all(backups.slice(30).map((file) => driveFetch(token, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}`, { method: "DELETE" })));
+  return { folderId: resolvedFolderId, fileId: saved.id, backupDate, backedUpAt: new Date().toISOString() } satisfies SpreadsheetBackupResult;
+}
+
+/** Permanently removes only spreadsheet backups and the dedicated app-created folder. */
+export async function removeDriveSpreadsheetBackups({ folderId, authorization }: { folderId: string; authorization: Promise<string> }) {
+  const token = await authorization;
+  const folder = await ensureSpreadsheetFolder(token, folderId);
+  const backups = await listSpreadsheetBackups(token, folder);
+  await Promise.all(backups.map((file) => driveFetch(token, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}`, { method: "DELETE" })));
+  await driveFetch(token, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folder)}`, { method: "DELETE" });
 }

@@ -5,9 +5,10 @@ export type ExpenseEntry = { id: string; name: string; amountCents: number; date
 /** Stored in the encrypted vault; it intentionally has no dedicated UI panel. */
 export type RecurringExpense = { id: string; name: string; amountCents: number; bucket: Bucket; dueDay: number; active: boolean };
 export type PayMonth = { id: string; startDate: string; endDate: string; targetPercentages: Record<Bucket, number>; incomes: IncomeEntry[]; expenses: ExpenseEntry[] };
+export type SpreadsheetBackupSettings = { enabled: boolean; folderId?: string; lastSuccessfulDate?: string; lastBackupFileId?: string; lastBackupAt?: string };
 // This is encrypted alongside the budget. It is a recovery-method label only;
 // it never contains a Drive token, recovery secret, or any financial data.
-export type BudgetVault = { version: 3; settings: { defaultTargets: Record<Bucket, number> }; payMonths: PayMonth[]; recurringExpenses: RecurringExpense[]; recoveryProvider?: "google-drive" };
+export type BudgetVault = { version: 3; settings: { defaultTargets: Record<Bucket, number> }; payMonths: PayMonth[]; recurringExpenses: RecurringExpense[]; recoveryProvider?: "google-drive"; spreadsheetBackup?: SpreadsheetBackupSettings };
 
 // Decrypt-only formats. Every conversion below runs in the browser before re-encryption.
 export type LegacyExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; recurring: boolean };

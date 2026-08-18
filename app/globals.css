@@ -114,6 +114,9 @@ button { touch-action: manipulation; }
 .drive-backup-settings i { color: var(--teal); font-size: 1.2rem; }
 .drive-backup-settings span { display: grid; gap: .2rem; }
 .drive-backup-settings small { color: var(--muted); line-height: 1.4; }
+.spreadsheet-backup-settings { margin-bottom: 1rem; }
+.spreadsheet-backup-settings .data-tool-actions { align-items: center; }
+.spreadsheet-backup-settings .remember-choice { flex: 1 1 15rem; padding: .2rem 0; }
 .stale-drive-backup { border-color: #edc6ca; background: #fffafb; }
 .stale-drive-backup i { color: var(--rose); }
 .income-panel .p-card-title { font-size: 1rem; }
