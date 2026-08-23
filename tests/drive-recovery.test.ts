@@ -86,4 +86,55 @@ describe("Google Drive recovery authorization", () => {
     expect(calls.filter((call) => call.init?.method === "DELETE")).toHaveLength(1);
     expect(calls.find((call) => call.init?.method === "DELETE")?.input).toContain("file-30");
   });
+
+  it("silently renews spreadsheet access before falling back to Google UI", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID", "test-client-id.apps.googleusercontent.com");
+    const prompts: (string | undefined)[] = [];
+    vi.stubGlobal("window", {
+      setTimeout,
+      clearTimeout,
+      google: {
+        accounts: {
+          oauth2: {
+            initTokenClient: (options: { callback: (response: { access_token?: string; error_description?: string; expires_in?: number; scope?: string }) => void }) => ({
+              requestAccessToken: (request?: { prompt?: string }) => {
+                prompts.push(request?.prompt);
+                if (request?.prompt === "none") options.callback({ error_description: "interaction required" });
+                else options.callback({ access_token: "visible-file-token", expires_in: 300, scope: "https://www.googleapis.com/auth/drive.file" });
+              }
+            })
+          }
+        }
+      }
+    });
+
+    const { authorizeDriveSpreadsheetBackupOnPageLoad } = await import("@/lib/drive/recovery");
+    await expect(authorizeDriveSpreadsheetBackupOnPageLoad("person@example.com")).resolves.toBe("visible-file-token");
+    expect(prompts).toEqual(["none", ""]);
+  });
+
+  it("uses a silent spreadsheet grant without opening Google UI", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID", "test-client-id.apps.googleusercontent.com");
+    const prompts: (string | undefined)[] = [];
+    vi.stubGlobal("window", {
+      setTimeout,
+      clearTimeout,
+      google: {
+        accounts: {
+          oauth2: {
+            initTokenClient: (options: { callback: (response: { access_token: string; expires_in: number; scope: string }) => void }) => ({
+              requestAccessToken: (request?: { prompt?: string }) => {
+                prompts.push(request?.prompt);
+                options.callback({ access_token: "visible-file-token", expires_in: 300, scope: "https://www.googleapis.com/auth/drive.file" });
+              }
+            })
+          }
+        }
+      }
+    });
+
+    const { authorizeDriveSpreadsheetBackupOnPageLoad } = await import("@/lib/drive/recovery");
+    await expect(authorizeDriveSpreadsheetBackupOnPageLoad("person@example.com")).resolves.toBe("visible-file-token");
+    expect(prompts).toEqual(["none"]);
+  });
 });

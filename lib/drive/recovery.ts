@@ -103,10 +103,26 @@ function driveToken(options: TokenRequestOptions = {}) {
 export function prepareDriveRecoveryAuthorization() { return loadGoogleIdentity(); }
 /** Starts Google authorization synchronously in the calling button handler. */
 export function beginDriveRecoveryAuthorization(loginHint?: string) { return driveToken({ prompt: "", loginHint }); }
-/** Starts visible spreadsheet-backup authorization from a user action. */
+/** Starts visible spreadsheet-backup authorization, allowing Google UI when needed. */
 export function beginDriveSpreadsheetAuthorization(loginHint?: string) { return driveToken({ prompt: "", loginHint, scope: DRIVE_FILE_SCOPE }); }
+/**
+ * Attempts to renew the visible-file permission without displaying Google UI.
+ * Callers can fall back to beginDriveSpreadsheetAuthorization when Google
+ * requires interaction.
+ */
+export function silentlyAuthorizeDriveSpreadsheetBackup(loginHint?: string) { return driveToken({ prompt: "none", loginHint, scope: DRIVE_FILE_SCOPE }); }
 /** Returns an in-memory visible-file token without opening Google UI. */
 export function cachedDriveSpreadsheetAuthorization(loginHint?: string) { return matchingMemoryToken({ loginHint, scope: DRIVE_FILE_SCOPE })?.value ?? null; }
+/**
+ * Gets spreadsheet-backup access during page initialization. Existing tokens
+ * and grants remain invisible; only a failed silent request permits Google to
+ * display its normal authorization UI.
+ */
+export function authorizeDriveSpreadsheetBackupOnPageLoad(loginHint?: string) {
+  const cached = cachedDriveSpreadsheetAuthorization(loginHint);
+  if (cached) return Promise.resolve(cached);
+  return silentlyAuthorizeDriveSpreadsheetBackup(loginHint).catch(() => beginDriveSpreadsheetAuthorization(loginHint));
+}
 /** Clears the ephemeral Drive token when the account session ends. */
 export function clearDriveRecoveryAuthorization() { memoryTokens.clear(); pendingTokenRequests.clear(); }
 

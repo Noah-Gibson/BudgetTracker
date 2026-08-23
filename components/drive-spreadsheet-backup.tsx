@@ -5,13 +5,12 @@ import { Button } from "primereact/button";
 import { Checkbox } from "primereact/checkbox";
 import type { BudgetVault } from "@/lib/budget/types";
 import { budgetWorkbook } from "@/lib/budget/spreadsheet";
-import { beginDriveSpreadsheetAuthorization, cachedDriveSpreadsheetAuthorization, removeDriveSpreadsheetBackups, saveDriveSpreadsheetBackup, type SpreadsheetBackupResult } from "@/lib/drive/recovery";
+import { authorizeDriveSpreadsheetBackupOnPageLoad, beginDriveSpreadsheetAuthorization, removeDriveSpreadsheetBackups, saveDriveSpreadsheetBackup, type SpreadsheetBackupResult } from "@/lib/drive/recovery";
 
 type Props = {
   vault: BudgetVault;
   email: string;
   driveReady: boolean;
-  saveGeneration: number;
   onChange: (vault: BudgetVault) => void;
   onBackupSuccess: (result: SpreadsheetBackupResult) => void;
 };
@@ -24,10 +23,11 @@ function localDate() {
 
 function displayDate(value?: string) { return value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "Not backed up yet"; }
 
-export function DriveSpreadsheetBackup({ vault, email, driveReady, saveGeneration, onChange, onBackupSuccess }: Props) {
+export function DriveSpreadsheetBackup({ vault, email, driveReady, onChange, onBackupSuccess }: Props) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const automaticTimer = useRef<number | null>(null);
+  const automaticAttempt = useRef<string | null>(null);
   const settings = vault.spreadsheetBackup;
   const today = localDate();
 
@@ -47,12 +47,19 @@ export function DriveSpreadsheetBackup({ vault, email, driveReady, saveGeneratio
 
   useEffect(() => {
     if (automaticTimer.current) window.clearTimeout(automaticTimer.current);
-    if (!saveGeneration || !settings?.enabled || settings.lastSuccessfulDate === today || busy) return;
-    const token = cachedDriveSpreadsheetAuthorization(email);
-    if (!token) return;
-    automaticTimer.current = window.setTimeout(() => { void upload(vault, Promise.resolve(token)); }, 1_500);
+    if (!driveReady || !settings?.enabled || settings.lastSuccessfulDate === today || busy) return;
+    // One attempt per account and local calendar day prevents rerenders (and a
+    // blocked Google window) from repeatedly starting authorization.
+    const attemptKey = `${email}:${today}`;
+    if (automaticAttempt.current === attemptKey) return;
+    automaticAttempt.current = attemptKey;
+    automaticTimer.current = window.setTimeout(() => {
+      // Google only displays UI when its silent check cannot renew the
+      // existing grant. This is deliberately attempted on page load.
+      void upload(vault, authorizeDriveSpreadsheetBackupOnPageLoad(email));
+    }, 1_500);
     return () => { if (automaticTimer.current) window.clearTimeout(automaticTimer.current); };
-  }, [busy, email, saveGeneration, settings?.enabled, settings?.lastSuccessfulDate, today, upload, vault]);
+  }, [busy, driveReady, email, settings?.enabled, settings?.lastSuccessfulDate, today, upload, vault]);
 
   const enable = () => {
     if (!driveReady || busy) return;
@@ -60,12 +67,14 @@ export function DriveSpreadsheetBackup({ vault, email, driveReady, saveGeneratio
     // the user activation required to grant the visible Drive-file scope.
     const authorization = beginDriveSpreadsheetAuthorization(email);
     const enabledVault: BudgetVault = { ...vault, spreadsheetBackup: { ...settings, enabled: true } };
+    automaticAttempt.current = `${email}:${today}`;
     onChange(enabledVault);
     void upload(enabledVault, authorization);
   };
   const backupNow = () => {
     if (!settings?.enabled || !driveReady || busy) return;
     const authorization = beginDriveSpreadsheetAuthorization(email);
+    automaticAttempt.current = `${email}:${today}`;
     void upload(vault, authorization);
   };
   const disable = () => {
@@ -86,6 +95,5 @@ export function DriveSpreadsheetBackup({ vault, email, driveReady, saveGeneratio
     } catch (error) { setNotice(error instanceof Error ? error.message : "Google Drive could not remove the spreadsheet backups."); } finally { setBusy(false); }
   };
 
-  const needsTap = settings?.enabled && settings.lastSuccessfulDate !== today && !cachedDriveSpreadsheetAuthorization(email);
-  return <section className="drive-backup-settings spreadsheet-backup-settings"><div><i className="pi pi-file-excel" /><span><strong>Automatic spreadsheet backup</strong><small>Creates a readable, unencrypted .xlsx copy in your visible Google Drive. It stays private from Cipher Budget, but Google and anyone with access to your Drive can read it.</small>{settings?.enabled && <small>Last backup: {displayDate(settings.lastSuccessfulDate)}. {needsTap ? "Tap Back up now to refresh Google Drive access for today." : "The app will back up at most once per day while it is open and authorized."}</small>}</span></div><div className="data-tool-actions">{settings?.enabled ? <><Button outlined label="Back up now" icon="pi pi-cloud-upload" loading={busy} disabled={!driveReady} onClick={backupNow} />{settings.folderId && <Button text label="Open folder" icon="pi pi-external-link" disabled={busy} onClick={() => window.open(`https://drive.google.com/drive/folders/${encodeURIComponent(settings.folderId!)}`, "_blank", "noopener,noreferrer")} />}<Button text severity="secondary" label="Disable" icon="pi pi-pause" disabled={busy} onClick={disable} />{settings.folderId && <Button text severity="danger" label="Remove backups" icon="pi pi-trash" disabled={busy} onClick={() => void remove()} />}</> : <><div className="remember-choice"><Checkbox inputId="automatic-drive-spreadsheet" checked={false} onChange={enable} disabled={!driveReady || busy} /><label htmlFor="automatic-drive-spreadsheet">Back up a readable spreadsheet to Google Drive daily</label></div><Button label="Enable Google Drive backups" icon="pi pi-google" loading={busy} disabled={!driveReady} onClick={enable} /></>}</div>{!driveReady && <p className="transfer-status" role="status">Preparing Google Drive access…</p>}{notice && <p className="transfer-status" role="status">{notice}</p>}</section>;
+  return <section className="drive-backup-settings spreadsheet-backup-settings"><div><i className="pi pi-file-excel" /><span><strong>Automatic spreadsheet backup</strong><small>Creates a readable, unencrypted .xlsx copy in your visible Google Drive. It stays private from Cipher Budget, but Google and anyone with access to your Drive can read it.</small>{settings?.enabled && <small>Last backup: {displayDate(settings.lastSuccessfulDate)}. The app checks for today&apos;s backup when this page opens and backs up at most once per day.</small>}</span></div><div className="data-tool-actions">{settings?.enabled ? <><Button outlined label="Back up now" icon="pi pi-cloud-upload" loading={busy} disabled={!driveReady} onClick={backupNow} />{settings.folderId && <Button text label="Open folder" icon="pi pi-external-link" disabled={busy} onClick={() => window.open(`https://drive.google.com/drive/folders/${encodeURIComponent(settings.folderId!)}`, "_blank", "noopener,noreferrer")} />}<Button text severity="secondary" label="Disable" icon="pi pi-pause" disabled={busy} onClick={disable} />{settings.folderId && <Button text severity="danger" label="Remove backups" icon="pi pi-trash" disabled={busy} onClick={() => void remove()} />}</> : <><div className="remember-choice"><Checkbox inputId="automatic-drive-spreadsheet" checked={false} onChange={enable} disabled={!driveReady || busy} /><label htmlFor="automatic-drive-spreadsheet">Back up a readable spreadsheet to Google Drive daily</label></div><Button label="Enable Google Drive backups" icon="pi pi-google" loading={busy} disabled={!driveReady} onClick={enable} /></>}</div>{!driveReady && <p className="transfer-status" role="status">Preparing Google Drive access…</p>}{notice && <p className="transfer-status" role="status">{notice}</p>}</section>;
 }
