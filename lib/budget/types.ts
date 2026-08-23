@@ -33,6 +33,13 @@ export const defaultTargets: Record<Bucket, number> = { needs: 50, goals: 30, wa
 export const newId = () => crypto.randomUUID();
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
+export function expenseListGroups<T extends { date?: string }>(entries: T[], today = todayISO()) {
+  const datedCurrent = entries.filter((entry) => entry.date && entry.date <= today).sort((left, right) => right.date!.localeCompare(left.date!));
+  const undated = entries.filter((entry) => !entry.date);
+  const future = entries.filter((entry) => entry.date && entry.date > today).sort((left, right) => left.date!.localeCompare(right.date!));
+  return { current: [...datedCurrent, ...undated], future };
+}
+
 export function addDays(start: string, days: number) { const d = new Date(`${start}T12:00:00`); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); }
 export function createEmptyVault(): BudgetVault { return { version: 3, settings: { defaultTargets: { ...defaultTargets } }, payMonths: [], recurringExpenses: [] }; }
 export function dueDateForMonth(year: number, month: number, dueDay: number) {

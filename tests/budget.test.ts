@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
+import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, expenseListGroups, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
 describe("pay-month budgets", () => {
   it("creates a 28-day pay-month with one income list and cycle-wide totals", () => {
@@ -19,6 +19,21 @@ describe("pay-month budgets", () => {
     expect(next.expenses).toHaveLength(1); expect(next.expenses[0].date).toBe("2026-02-28");
     expect(dueDateForMonth(2028, 1, 31)).toBe("2028-02-29");
     expect(dueDatesWithin("2026-02-12", "2026-03-11", 1)).toEqual(["2026-03-01"]);
+  });
+
+  it("groups expenses by date with current entries first and upcoming entries in due-date order", () => {
+    const entries = [
+      { id: "undated", name: "Cash", amountCents: 100 },
+      { id: "yesterday", name: "Groceries", amountCents: 200, date: "2026-08-22" },
+      { id: "today-first", name: "Coffee", amountCents: 300, date: "2026-08-23" },
+      { id: "tomorrow", name: "Gas", amountCents: 400, date: "2026-08-24" },
+      { id: "today-second", name: "Lunch", amountCents: 500, date: "2026-08-23" },
+      { id: "later", name: "Rent", amountCents: 600, date: "2026-08-30" }
+    ];
+    const groups = expenseListGroups(entries, "2026-08-23");
+    expect(groups.current.map((entry) => entry.id)).toEqual(["today-first", "today-second", "yesterday", "undated"]);
+    expect(groups.future.map((entry) => entry.id)).toEqual(["tomorrow", "later"]);
+    expect(expenseListGroups(entries.filter((entry) => entry.date !== "2026-08-24" && entry.date !== "2026-08-30"), "2026-08-23").future).toEqual([]);
   });
 
   it("consolidates legacy entries and creates dated recurring expenses locally", () => {
