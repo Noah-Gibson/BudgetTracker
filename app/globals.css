@@ -268,6 +268,9 @@ button { touch-action: manipulation; }
 .expense-details > .field { min-width: 0; }
 .native-input[type="date"] { display: block; box-sizing: border-box; inline-size: 100%; max-inline-size: 100%; min-inline-size: 0; }
 .expense-form { margin-top: 1.25rem; }
+.expense-dialog .expense-form { margin-top: 0; }
+.new-expense-button { width: 100%; margin-top: 1.1rem; justify-content: center; }
+.expense-list-divider { display: block !important; margin-top: .25rem; padding: .85rem 0 .35rem !important; border-bottom: 0 !important; color: var(--muted); font-size: .75rem !important; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .optional-label { color: var(--muted); font-size: .75rem; font-weight: 500; }
 .form-buttons { display: flex; flex-wrap: wrap; gap: .55rem; }
 .form-buttons .p-button { flex: 1 1 11rem; justify-content: center; min-width: 0; }
