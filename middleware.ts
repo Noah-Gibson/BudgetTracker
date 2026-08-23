@@ -13,6 +13,7 @@ export function middleware(request: NextRequest) {
     "default-src 'self'",
     scriptSrc,
     "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
+    "worker-src 'self'",
     "img-src 'self' data: blob: https://*.googleusercontent.com",
     "font-src 'self' data:",
     "connect-src 'self' https://accounts.google.com https://www.googleapis.com https://vitals.vercel-insights.com",

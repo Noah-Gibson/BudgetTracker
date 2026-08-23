@@ -57,7 +57,7 @@ button { touch-action: manipulation; }
 .security-icon, .unlock-icon { font-size: 2.35rem; }
 
 .app-shell { min-height: 100dvh; }
-.topbar { position: sticky; top: 0; z-index: 5; display: flex; min-width: 0; min-height: 60px; align-items: center; justify-content: space-between; gap: .5rem; padding: .5rem 1rem; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .92); backdrop-filter: blur(14px); }
+.topbar { position: sticky; top: 0; z-index: 5; display: flex; min-width: 0; min-height: 60px; align-items: center; justify-content: space-between; gap: .5rem; padding: calc(.5rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) .5rem max(1rem, env(safe-area-inset-left)); border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .92); backdrop-filter: blur(14px); }
 .brand { display: flex; min-width: 0; align-items: center; gap: .55rem; color: var(--teal-dark); font-size: 1.02rem; font-weight: 800; white-space: nowrap; }
 .topbar-actions { display: flex; flex: 0 0 auto; gap: .15rem; }
 .topbar-actions .p-button { padding-inline: .55rem; }
@@ -179,6 +179,9 @@ button { touch-action: manipulation; }
 .data-tool-actions .p-button { flex: 1 1 12rem; justify-content: center; }
 .transfer-status { margin: 0; color: var(--muted); font-size: .85rem; line-height: 1.45; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.ios-install-tip { position: fixed; z-index: 20; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); left: max(1rem, env(safe-area-inset-left)); display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; max-width: 520px; margin: auto; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); box-shadow: var(--shadow); }
+.ios-install-tip span { display: grid; gap: .2rem; }.ios-install-tip small { color: var(--muted); line-height: 1.35; }.ios-install-tip button { border: 0; background: transparent; color: var(--muted); font-size: 1.5rem; line-height: 1; cursor: pointer; }
+.offline-banner { width: min(calc(100% - 2rem), 1440px); margin: 1rem auto 0; padding: .75rem 1rem; border: 1px solid #c4b5fd; border-radius: 10px; background: var(--subtle-accent); color: var(--ink); }
 
 .empty-state { display: grid; justify-items: stretch; width: min(calc(100% - 2rem), 640px); gap: 1rem; margin: 3rem auto; padding: 1.5rem; text-align: center; }
 .empty-state h1 { margin: 0; font-size: clamp(2rem, 9vw, 2.6rem); }

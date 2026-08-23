@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "@fontsource-variable/dm-sans";
@@ -13,8 +13,13 @@ import { AppProviders } from "@/components/app-providers";
 export const metadata: Metadata = {
   title: "Cipher Budget",
   description: "A private, encrypted biweekly budget planner",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "Cipher Budget", statusBarStyle: "black-translucent" },
+  icons: { apple: "/apple-icon" },
   robots: { index: false, follow: false }
 };
+
+export const viewport: Viewport = { themeColor: "#1a1718", viewportFit: "cover" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="en" data-theme="dark" suppressHydrationWarning><body><AppProviders>{children}</AppProviders><Analytics /><SpeedInsights /></body></html>;

@@ -17,6 +17,7 @@ import { addDays, bucketMeta, clonePayMonth, clonePeriod, createEmptyVault, cycl
 import { budgetWorkbook, importBudgetWorkbook } from "@/lib/budget/spreadsheet";
 import { decryptVault, encryptVault, exportVaultKey, generateVaultKey, importVaultKey, randomBytes, recoveryKey, unwrapWithPasskey, unwrapWithRecovery, wrapWithRecovery, type Envelope } from "@/lib/crypto/vault";
 import { beginDriveRecoveryAuthorization, checkDriveRecoveryBackup, clearDriveRecoveryAuthorization, loadDriveRecoveryBackup, prepareDriveRecoveryAuthorization, removeDriveRecoveryBackup, saveDriveRecoveryBackup, type DriveRecoveryPackage, type SpreadsheetBackupResult } from "@/lib/drive/recovery";
+import { clearVaultSnapshot, loadVaultSnapshot, saveVaultSnapshot } from "@/lib/client/vault-snapshot";
 
 type ListEntry = { id: string; name: string; amountCents: number; date?: string; recurring?: boolean };
 type DriveBackupStatus = "unverified" | "verified" | "stale";
@@ -151,14 +152,35 @@ function GoogleSignInButton() {
 export function BudgetShell() {
   const { data: session, status } = useSession();
   if (status === "loading") return <main className="center-screen"><i className="pi pi-spin pi-spinner" /> Loading secure session…</main>;
-  if (!session?.user) return <main className="landing">
-    <ThemeToggle className="landing-theme-toggle" />
-    <section className="landing-copy"><p className="eyebrow">PRIVATE BY DESIGN</p><h1>Your budget, visible only to you.</h1><p>Manage every pay-month budget in a vault encrypted in your browser. The service stores encrypted data—not your financial details.</p><GoogleSignInButton /></section>
-    <section className="security-panel"><i className="pi pi-shield security-icon" /><h2>We can&apos;t see your data</h2><ul><li>Google sign-in + a personal passkey</li><li>Browser-encrypted budget vault</li><li>Google Drive recovery backup</li><li>Pay-month budgeting that works beautifully on mobile</li></ul></section>
-  </main>;
+  if (!session?.user) return <OfflineAwareLanding />;
   return <VaultWorkspace email={session.user.email ?? "Signed in with Google"} image={session.user.image} onSignOut={() => { clearDriveRecoveryAuthorization(); void signOut({ callbackUrl: "/" }); }} />;
 }
 
+function Landing() { return <main className="landing">
+    <ThemeToggle className="landing-theme-toggle" />
+    <section className="landing-copy"><p className="eyebrow">PRIVATE BY DESIGN</p><h1>Your budget, visible only to you.</h1><p>Manage every pay-month budget in a vault encrypted in your browser. The service stores encrypted data—not your financial details.</p><GoogleSignInButton /></section>
+    <section className="security-panel"><i className="pi pi-shield security-icon" /><h2>We can&apos;t see your data</h2><ul><li>Google sign-in + a personal passkey</li><li>Browser-encrypted budget vault</li><li>Google Drive recovery backup</li><li>Pay-month budgeting that works beautifully on mobile</li></ul></section>
+  </main>; }
+
+function OfflineAwareLanding() {
+  const [snapshot, setSnapshot] = useState<{ vault: BudgetVault; savedAt: string } | null>(null);
+  useEffect(() => {
+    if (navigator.onLine || deviceEnvelope()?.kind !== "trusted-device") return;
+    void (async () => {
+      try {
+        const saved = await loadVaultSnapshot();
+        const device = deviceEnvelope();
+        if (!saved || !device || device.kind !== "trusted-device") return;
+        const key = await unlockTrustedDevice(device);
+        const document = await decryptVault(saved.envelope, key);
+        setSnapshot({ vault: upgradeVault(document).vault, savedAt: saved.savedAt });
+      } catch { /* A missing or stale snapshot simply uses the normal landing page. */ }
+    })();
+  }, []);
+  if (!snapshot) return <Landing />;
+  const latest = snapshot.vault.payMonths.at(-1);
+  return <main className="app-shell"><section className="offline-banner"><strong>Offline — viewing last synced budget</strong><br /><small>Synced {new Date(snapshot.savedAt).toLocaleString()}. Editing and Google Drive backups are unavailable until you reconnect.</small></section><section className="budget-board"><div className="period-toolbar"><div><p className="eyebrow">READ ONLY</p><h1>{latest ? periodLabel(latest) : "Your budget"}</h1></div></div><div className="summary-grid"><Card className="summary-card"><span>Pay-month budgets</span><strong>{snapshot.vault.payMonths.length}</strong></Card><Card className="summary-card"><span>Monthly recurring bills</span><strong>{snapshot.vault.recurringExpenses.length}</strong></Card><Card className="summary-card"><span>Encrypted snapshot</span><strong>Available</strong></Card></div>{latest && <><h2>Last synced pay-month</h2><div className="bucket-grid">{(Object.keys(bucketMeta) as Bucket[]).map((bucket) => { const values = totals(latest); const spent = values.byBucket(bucket); return <Card key={bucket} className={`bucket-card ${bucket}`}><p>{bucketMeta[bucket].label}</p><strong>{money(spent)} spent</strong></Card>; })}</div></>}</section></main>;
+}
 function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: string | null; onSignOut: () => void }) {
   const [vault, setVault] = useState<BudgetVault | null>(null);
   const [key, setKey] = useState<CryptoKey | null>(null);
@@ -196,13 +218,16 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const lockAndForgetBrowser = useCallback((message = "Vault locked and this browser has been forgotten.") => {
     localStorage.removeItem(DEVICE_KEY);
     void forgetTrustedDeviceKey();
+    void clearVaultSnapshot();
     lock(message);
   }, [lock]);
 
   const fetchEnvelope = useCallback(async () => {
     const response = await fetch("/api/vault", { cache: "no-store" });
     if (!response.ok) throw new Error("Vault is not available. Verify your passkey first.");
-    return (await response.json()).vault as Envelope | null;
+    const remote = (await response.json()).vault as Envelope | null;
+    if (remote) void saveVaultSnapshot(remote).catch(() => { /* Offline access is optional. */ });
+    return remote;
   }, []);
   const unlockRemembered = async () => {
     setBusy(true); setNotice("");
@@ -401,6 +426,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         if (!deleted.ok) throw new Error("The old vault could not be deleted. No new vault was created.");
         localStorage.removeItem(DEVICE_KEY);
         await forgetTrustedDeviceKey();
+        await clearVaultSnapshot();
       }
       // A reset creates a distinct vault and recovery wrapper. A prior Drive
       // package must never be treated as a backup for it, even if the user
@@ -446,6 +472,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         const savedEnvelope = { ...currentEnvelope, ...encrypted, revision };
         activeEnvelope.current = savedEnvelope;
         setEnvelope(savedEnvelope);
+        void saveVaultSnapshot(savedEnvelope).catch(() => { /* Offline access is optional. */ });
       }
     };
     const operation = drain();
