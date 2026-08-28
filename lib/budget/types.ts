@@ -40,6 +40,10 @@ export function expenseListGroups<T extends { date?: string }>(entries: T[], tod
   return { current: [...datedCurrent, ...undated], future };
 }
 
+export function futureExpenseTotal(entries: Array<{ amountCents: number; date?: string }>, today = todayISO()) {
+  return entries.reduce((total, entry) => total + (entry.date && entry.date > today ? entry.amountCents : 0), 0);
+}
+
 export function addDays(start: string, days: number) { const d = new Date(`${start}T12:00:00`); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); }
 export function createEmptyVault(): BudgetVault { return { version: 3, settings: { defaultTargets: { ...defaultTargets } }, payMonths: [], recurringExpenses: [] }; }
 export function dueDateForMonth(year: number, month: number, dueDay: number) {

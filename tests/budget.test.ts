@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, expenseListGroups, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
+import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
 describe("pay-month budgets", () => {
   it("creates a 28-day pay-month with one income list and cycle-wide totals", () => {
@@ -34,6 +34,7 @@ describe("pay-month budgets", () => {
     expect(groups.current.map((entry) => entry.id)).toEqual(["today-first", "today-second", "yesterday", "undated"]);
     expect(groups.future.map((entry) => entry.id)).toEqual(["tomorrow", "later"]);
     expect(expenseListGroups(entries.filter((entry) => entry.date !== "2026-08-24" && entry.date !== "2026-08-30"), "2026-08-23").future).toEqual([]);
+    expect(futureExpenseTotal(entries, "2026-08-23")).toBe(1000);
   });
 
   it("consolidates legacy entries and creates dated recurring expenses locally", () => {

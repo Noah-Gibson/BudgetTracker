@@ -118,6 +118,13 @@ button { touch-action: manipulation; }
 .spreadsheet-backup-settings { margin-bottom: 1rem; }
 .spreadsheet-backup-settings .data-tool-actions { align-items: center; }
 .spreadsheet-backup-settings .remember-choice { flex: 1 1 15rem; padding: .2rem 0; }
+.daily-backup-dialog { width: 100vw !important; max-width: none !important; height: 100vh; max-height: none !important; margin: 0 !important; border-radius: 0; }
+.daily-backup-dialog .p-dialog-content { display: grid; min-height: calc(100vh - 4.5rem); place-items: center; padding: 2rem; }
+.daily-backup-prompt { width: min(100%, 38rem); text-align: center; }
+.daily-backup-prompt > i { display: inline-grid; width: 4rem; height: 4rem; place-items: center; border-radius: 50%; background: var(--subtle-accent); color: var(--accent); font-size: 1.8rem; }
+.daily-backup-prompt h2 { margin: 1.5rem 0 .75rem; }
+.daily-backup-prompt p { line-height: 1.55; }
+.daily-backup-prompt .button-row { justify-content: center; margin-top: 1.5rem; }
 .stale-drive-backup { border-color: #edc6ca; background: #fffafb; }
 .stale-drive-backup i { color: var(--rose); }
 .income-panel .p-card-title { font-size: 1rem; }
