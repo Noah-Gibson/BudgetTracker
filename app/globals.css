@@ -118,8 +118,9 @@ button { touch-action: manipulation; }
 .spreadsheet-backup-settings { margin-bottom: 1rem; }
 .spreadsheet-backup-settings .data-tool-actions { align-items: center; }
 .spreadsheet-backup-settings .remember-choice { flex: 1 1 15rem; padding: .2rem 0; }
-.daily-backup-dialog { width: 100vw !important; max-width: none !important; height: 100vh; max-height: none !important; margin: 0 !important; border-radius: 0; }
-.daily-backup-dialog .p-dialog-content { display: grid; min-height: calc(100vh - 4.5rem); place-items: center; padding: 2rem; }
+.daily-backup-dialog { position: fixed !important; inset: 0 !important; width: 100vw !important; max-width: none !important; height: 100vh; height: 100dvh; min-height: 100vh; min-height: 100dvh; max-height: 100vh !important; max-height: 100dvh !important; margin: 0 !important; border-radius: 0; overflow: hidden; transform: none !important; }
+.daily-backup-dialog .p-dialog-header { padding-top: max(1.25rem, env(safe-area-inset-top)); }
+.daily-backup-dialog .p-dialog-content { display: grid; min-height: 0; flex: 1 1 auto; place-items: center; padding: 2rem max(1.5rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left)); overflow: hidden; }
 .daily-backup-prompt { width: min(100%, 38rem); text-align: center; }
 .daily-backup-prompt > i { display: inline-grid; width: 4rem; height: 4rem; place-items: center; border-radius: 50%; background: var(--subtle-accent); color: var(--accent); font-size: 1.8rem; }
 .daily-backup-prompt h2 { margin: 1.5rem 0 .75rem; }
