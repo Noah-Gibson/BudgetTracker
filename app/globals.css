@@ -157,7 +157,7 @@ button { touch-action: manipulation; }
 .bucket-card.goals .p-progressbar-value { background: #566ec5; }
 .bucket-card.wants .p-progressbar-value { background: var(--gold); }
 .expense-progress { position: relative; display: flow-root; }
-.unpaid-progress { position: absolute; top: 1rem; bottom: .35rem; left: calc(var(--expensed-progress) - var(--unpaid-progress)); width: var(--unpaid-progress); border-radius: .25rem; background: color-mix(in srgb, var(--category-needs) 58%, var(--surface-muted)); pointer-events: none; }
+.unpaid-progress { position: absolute; top: 1rem; bottom: .35rem; left: calc(var(--expensed-progress) - var(--unpaid-progress)); width: var(--unpaid-progress); background: color-mix(in srgb, var(--category-needs) 58%, var(--surface-muted)); pointer-events: none; }
 .bucket-card.goals .unpaid-progress { background: color-mix(in srgb, var(--category-goals) 58%, var(--surface-muted)); }
 .bucket-card.wants .unpaid-progress { background: color-mix(in srgb, var(--category-wants) 58%, var(--surface-muted)); }
 .muted, .over { margin: 0; font-size: .85rem; }
