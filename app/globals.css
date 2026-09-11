@@ -293,7 +293,7 @@ button { touch-action: manipulation; }
 .expense-list-divider { display: block !important; margin-top: .25rem; padding: .85rem 0 .35rem !important; border-bottom: 0 !important; color: var(--muted); font-size: .75rem !important; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .optional-label { color: var(--muted); font-size: .75rem; font-weight: 500; }
 .form-buttons { display: flex; flex-wrap: wrap; gap: .55rem; }
-.recurring-choice { margin-bottom: .35rem; }
+.recurring-choice + .form-buttons { margin-top: .35rem; }
 .form-buttons .p-button { flex: 1 1 11rem; justify-content: center; min-width: 0; }
 .form-error { margin: .75rem 0 0; padding: .7rem .8rem; border-left: 3px solid var(--rose); border-radius: 4px; background: #fff1f3; color: #842032; font-size: .87rem; font-weight: 700; line-height: 1.4; }
 .entry-list { margin-top: 1.1rem; }
@@ -314,6 +314,8 @@ button { touch-action: manipulation; }
 .compact-dialog { width: min(460px, calc(100vw - 2rem)); }
 .compact-dialog p { color: var(--muted); line-height: 1.5; }
 .compact-dialog .native-input { display: block; margin-top: .35rem; }
+.compact-dialog .date-input-with-clear { margin-top: .35rem; }
+.compact-dialog .date-input-with-clear .native-input { margin-top: 0; }
 .dialog-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.25rem; }
 
 @media (min-width: 640px) {
