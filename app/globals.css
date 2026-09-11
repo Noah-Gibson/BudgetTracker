@@ -283,6 +283,10 @@ button { touch-action: manipulation; }
 .expense-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
 .expense-details > .field { min-width: 0; }
 .native-input[type="date"] { display: block; box-sizing: border-box; inline-size: 100%; max-inline-size: 100%; min-inline-size: 0; }
+.date-input-with-clear { display: flex; inline-size: 100%; min-inline-size: 0; gap: .35rem; }
+.date-input-with-clear .native-input[type="date"] { flex: 1 1 auto; min-inline-size: 0; }
+.clear-date-icon { flex: 0 0 2.6rem; inline-size: 2.6rem; min-inline-size: 2.6rem; min-block-size: 2.6rem; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-raised); color: var(--muted); cursor: pointer; }
+.clear-date-icon:hover { border-color: var(--accent); color: var(--accent); }
 .expense-form { margin-top: 1.25rem; }
 .expense-dialog .expense-form { margin-top: 0; }
 .new-expense-button { width: 100%; margin-top: 1.1rem; justify-content: center; }
