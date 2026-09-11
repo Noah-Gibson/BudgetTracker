@@ -294,6 +294,7 @@ button { touch-action: manipulation; }
 .optional-label { color: var(--muted); font-size: .75rem; font-weight: 500; }
 .form-buttons { display: flex; flex-wrap: wrap; gap: .55rem; }
 .recurring-choice + .form-buttons { margin-top: .35rem; }
+.expense-dialog .form-buttons { padding-top: .5rem; }
 .form-buttons .p-button { flex: 1 1 11rem; justify-content: center; min-width: 0; }
 .form-error { margin: .75rem 0 0; padding: .7rem .8rem; border-left: 3px solid var(--rose); border-radius: 4px; background: #fff1f3; color: #842032; font-size: .87rem; font-weight: 700; line-height: 1.4; }
 .entry-list { margin-top: 1.1rem; }
