@@ -296,6 +296,7 @@ button { touch-action: manipulation; }
 .entry-details { display: grid; min-width: 0; gap: .15rem; }
 .entry-details > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .entry-details small { color: var(--muted); font-size: .78rem; }
+.confirm-amount { width: fit-content; margin-top: .2rem; padding: .2rem .45rem; border: 1px solid var(--accent); border-radius: 999px; background: var(--subtle-accent); color: var(--accent); font: inherit; font-size: .72rem; font-weight: 700; cursor: pointer; }
 .entry-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .3rem; }
 .entry-action { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--teal-dark); font-size: .8rem; font-weight: 700; cursor: pointer; }
 .entry-action:hover { background: #edf7f5; }

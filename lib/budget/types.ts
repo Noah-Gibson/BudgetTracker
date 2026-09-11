@@ -1,7 +1,7 @@
 export type Bucket = "needs" | "goals" | "wants";
 
 export type IncomeEntry = { id: string; name: string; amountCents: number; date?: string };
-export type ExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; templateId?: string };
+export type ExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; templateId?: string; amountConfirmed?: boolean };
 /** Stored in the encrypted vault; it intentionally has no dedicated UI panel. */
 export type RecurringExpense = { id: string; name: string; amountCents: number; bucket: Bucket; dueDay: number; active: boolean };
 export type PayMonth = { id: string; startDate: string; endDate: string; targetPercentages: Record<Bucket, number>; incomes: IncomeEntry[]; expenses: ExpenseEntry[] };
@@ -72,7 +72,7 @@ export function dueDatesWithin(startDate: string, endDate: string, dueDay: numbe
 export function clonePayMonth(previous: PayMonth | undefined, startDate: string, targets: Record<Bucket, number>, recurringExpenses: RecurringExpense[]): PayMonth {
   const endDate = addDays(startDate, 27);
   const incomes = previous?.incomes.map((income) => ({ ...income, id: newId(), date: undefined })) ?? [];
-  const expenses = recurringExpenses.flatMap((expense) => expense.active ? dueDatesWithin(startDate, endDate, expense.dueDay).map((date) => ({ id: newId(), name: expense.name, amountCents: expense.amountCents, date, bucket: expense.bucket, templateId: expense.id })) : []);
+  const expenses = recurringExpenses.flatMap((expense) => expense.active ? dueDatesWithin(startDate, endDate, expense.dueDay).map((date) => ({ id: newId(), name: expense.name, amountCents: expense.amountCents, date, bucket: expense.bucket, templateId: expense.id, amountConfirmed: false })) : []);
   return { id: newId(), startDate, endDate, targetPercentages: { ...targets }, incomes, expenses };
 }
 export function clonePeriod(previous: LegacyBudgetPeriod | undefined, startDate: string, targets: Record<Bucket, number>): LegacyBudgetPeriod {

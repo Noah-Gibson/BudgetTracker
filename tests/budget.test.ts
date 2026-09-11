@@ -22,6 +22,7 @@ describe("pay-month budgets", () => {
     const next = clonePayMonth(first, "2026-02-12", vault.settings.defaultTargets, [recurring]);
     expect(next.incomes.map((entry) => entry.amountCents)).toEqual([100000, 110000]);
     expect(next.expenses).toHaveLength(1); expect(next.expenses[0].date).toBe("2026-02-28");
+    expect(next.expenses[0].amountConfirmed).toBe(false);
     expect(dueDateForMonth(2028, 1, 31)).toBe("2028-02-29");
     expect(dueDatesWithin("2026-02-12", "2026-03-11", 1)).toEqual(["2026-03-01"]);
   });
