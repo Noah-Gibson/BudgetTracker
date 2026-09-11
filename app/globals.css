@@ -288,6 +288,7 @@ button { touch-action: manipulation; }
 .clear-date-icon { box-sizing: border-box; flex: 0 0 2.6rem; inline-size: 2.6rem; block-size: 2.6rem; min-inline-size: 2.6rem; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-raised); color: var(--muted); cursor: pointer; }
 .clear-date-icon:hover { border-color: var(--accent); color: var(--accent); }
 .remaining-balance-choice { margin-top: .45rem; }
+.remaining-balance-choice label { font-size: .9rem; font-weight: 400; }
 .expense-form { margin-top: 1.25rem; }
 .expense-dialog .expense-form { margin-top: 0; }
 .new-expense-button { width: 100%; margin-top: 1.1rem; justify-content: center; }
