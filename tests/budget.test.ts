@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
+import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, todayISO, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
 describe("pay-month budgets", () => {
+  it("uses the device's local calendar date for today", () => {
+    const localLateEvening = new Date(2026, 7, 23, 23, 0, 0);
+    expect(todayISO(localLateEvening)).toBe("2026-08-23");
+  });
+
   it("creates a 28-day pay-month with one income list and cycle-wide totals", () => {
     const month = clonePayMonth(undefined, "2026-08-14", createEmptyVault().settings.defaultTargets, []);
     month.incomes.push({ id: "first", name: "First pay", amountCents: 200000 }, { id: "second", name: "Second pay", amountCents: 200000 });

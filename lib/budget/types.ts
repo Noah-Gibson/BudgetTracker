@@ -31,7 +31,18 @@ export const bucketMeta: Record<Bucket, { label: string; tone: string }> = {
 };
 export const defaultTargets: Record<Bucket, number> = { needs: 50, goals: 30, wants: 20 };
 export const newId = () => crypto.randomUUID();
-export const todayISO = () => new Date().toISOString().slice(0, 10);
+/**
+ * Format a calendar date in the browser's current local time zone. Dates in a
+ * budget are calendar days, not UTC instants, so `toISOString()` would make
+ * "today" become tomorrow for people west of UTC late in the evening.
+ */
+export function localDateISO(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+export const todayISO = (now = new Date()) => localDateISO(now);
 
 export function expenseListGroups<T extends { date?: string }>(entries: T[], today = todayISO()) {
   const datedCurrent = entries.filter((entry) => entry.date && entry.date <= today).sort((left, right) => right.date!.localeCompare(left.date!));
@@ -44,11 +55,11 @@ export function futureExpenseTotal(entries: Array<{ amountCents: number; date?: 
   return entries.reduce((total, entry) => total + (entry.date && entry.date > today ? entry.amountCents : 0), 0);
 }
 
-export function addDays(start: string, days: number) { const d = new Date(`${start}T12:00:00`); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); }
+export function addDays(start: string, days: number) { const d = new Date(`${start}T12:00:00`); d.setDate(d.getDate() + days); return localDateISO(d); }
 export function createEmptyVault(): BudgetVault { return { version: 3, settings: { defaultTargets: { ...defaultTargets } }, payMonths: [], recurringExpenses: [] }; }
 export function dueDateForMonth(year: number, month: number, dueDay: number) {
   const lastDay = new Date(year, month + 1, 0).getDate();
-  return new Date(year, month, Math.min(Math.max(1, dueDay), lastDay), 12).toISOString().slice(0, 10);
+  return localDateISO(new Date(year, month, Math.min(Math.max(1, dueDay), lastDay), 12));
 }
 export function dueDatesWithin(startDate: string, endDate: string, dueDay: number) {
   const start = new Date(`${startDate}T12:00:00`); const end = new Date(`${endDate}T12:00:00`); const dates: string[] = [];
