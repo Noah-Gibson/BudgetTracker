@@ -343,10 +343,16 @@ button { touch-action: manipulation; }
 @media (min-width: 640px) and (hover: hover) {
   .compact-dialog { width: min(600px, calc(100vw - 3rem)); }
   .expense-dialog { width: min(640px, calc(100vw - 3rem)); }
+  .expense-dialog .expense-form { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: .8rem; }
+  .expense-dialog .expense-form > .field:first-child, .expense-dialog .credit-card-choice, .expense-dialog .form-buttons { grid-column: 1 / -1; }
+  .expense-dialog .expense-details { display: contents; }
   .expense-dialog .expense-details { column-gap: .8rem; }
   .expense-dialog .date-input-with-clear { align-items: center; }
   .expense-dialog .native-input[type="date"] { block-size: 2.6rem; min-block-size: 2.6rem; max-block-size: 2.6rem; }
-  .expense-dialog .remaining-balance-choice, .expense-dialog .recurring-choice { padding-block: .1rem; }
+  .expense-dialog .remaining-balance-choice, .expense-dialog .recurring-choice { padding-block: .1rem; align-self: start; }
+  .expense-dialog .recurring-choice { grid-column: 2; grid-row: 3; order: initial; }
+  .expense-dialog .credit-card-choice { grid-row: 4; order: initial; }
+  .expense-dialog .form-buttons { grid-row: 5; order: initial; }
 }
 
 @media (min-width: 1080px) {
