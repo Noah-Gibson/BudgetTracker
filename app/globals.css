@@ -361,12 +361,6 @@ button { touch-action: manipulation; }
 @media (min-width: 1080px) {
   .period-actions { grid-template-columns: minmax(12rem, 1fr) repeat(4, max-content); }
   .period-actions .p-button { width: auto; }
-  .income-form { grid-template-columns: minmax(0, 1fr) minmax(9rem, .45fr) auto; }
-  .credit-card-form { grid-template-columns: minmax(0, 1fr) minmax(9rem, .45fr) auto; }
-  .credit-card-form .form-buttons { grid-column: auto; }
-  .credit-card-form .form-buttons .p-button { flex: 0 0 auto; }
-  .income-form .form-buttons { grid-column: auto; }
-  .income-form .form-buttons .p-button { flex: 0 0 auto; }
   .entry-list li { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
   .entry-actions { grid-column: auto; justify-content: flex-end; }
 }
