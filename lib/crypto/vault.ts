@@ -38,23 +38,6 @@ export async function unwrapWithRecovery(recovery: string, saltValue: string, wr
   return importVaultKey(new Uint8Array(raw));
 }
 
-async function passkeyKek(prfOutput: ArrayBuffer, salt: Uint8Array) {
-  const material = await crypto.subtle.importKey("raw", prfOutput, "HKDF", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: source(salt), info: source(encoder.encode("cipher-budget:passkey-wrap:v1")) }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-}
-
-export async function wrapWithPasskey(key: CryptoKey, prfOutput: ArrayBuffer, salt: Uint8Array) {
-  const iv = randomBytes(12); const kek = await passkeyKek(prfOutput, salt);
-  const wrapped = await crypto.subtle.encrypt({ name: "AES-GCM", iv: source(iv) }, kek, source(await exportVaultKey(key)));
-  return `${bytesToB64(iv)}.${bytesToB64(new Uint8Array(wrapped))}`;
-}
-
-export async function unwrapWithPasskey(wrappedValue: string, prfOutput: ArrayBuffer, salt: Uint8Array) {
-  const [iv, ciphertext] = wrappedValue.split("."); if (!iv || !ciphertext) throw new Error("Invalid device envelope");
-  const kek = await passkeyKek(prfOutput, salt);
-  return importVaultKey(new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: source(b64ToBytes(iv)) }, kek, source(b64ToBytes(ciphertext)))));
-}
-
 export async function encryptVault(vault: BudgetVault, key: CryptoKey, vaultId: string, revision: number): Promise<Pick<Envelope, "ciphertext" | "iv" | "tag">> {
   const iv = randomBytes(12); const output = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: source(iv), additionalData: source(aad(vaultId, revision)), tagLength: 128 }, key, source(encoder.encode(JSON.stringify(vault)))));
   return { ciphertext: bytesToB64(output.slice(0, -16)), tag: bytesToB64(output.slice(-16)), iv: bytesToB64(iv) };

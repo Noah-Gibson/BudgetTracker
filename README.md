@@ -9,7 +9,7 @@ A mobile-first, biweekly budget planner whose financial vault is encrypted in th
 3. Create the Neon schema with `npm run db:migrate`.
 4. Run `npm run dev` and sign in with Google.
 
-Use a real HTTPS origin for passkeys. Google OAuth needs this callback URL:
+Google OAuth needs this callback URL:
 
 ```
 https://YOUR_DOMAIN/api/auth/callback/google
@@ -23,4 +23,4 @@ Do not use production credentials in Preview deployments. Preview and developmen
 
 ## Security boundary
 
-Google Drive backup is the standard recovery option. The browser sends its recovery package directly to the user's hidden Google Drive app-data folder; the application server never receives a Drive token or recovery secret. Users can instead use the advanced manual recovery key option. A user who began with a manual key can later select **Use Google Drive recovery** in the unlocked budget and replace it with a newly generated Drive-stored recovery secret; after the encrypted vault update succeeds, the old manual key no longer unlocks that vault. If both available recovery methods and the passkey are lost, vault data cannot be recovered. The encrypted-vault model protects against application-server and database access; a Drive-backed vault also trusts the user's Google account to safeguard its recovery package.
+Google Drive backup is the standard recovery option. The browser sends its recovery package directly to the user's hidden Google Drive app-data folder; the application server never receives a Drive token or recovery secret. Users can instead use the advanced manual recovery key option. A user who began with a manual key can later select **Use Google Drive recovery** in the unlocked budget and replace it with a newly generated Drive-stored recovery secret; after the encrypted vault update succeeds, the old manual key no longer unlocks that vault. If both available recovery methods are lost, vault data cannot be recovered. The encrypted-vault model protects against application-server and database access; a Drive-backed vault also trusts the user's Google account to safeguard its recovery package.

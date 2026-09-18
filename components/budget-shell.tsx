@@ -198,7 +198,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
 
   const fetchEnvelope = useCallback(async () => {
     const response = await fetch("/api/vault", { cache: "no-store" });
-    if (!response.ok) throw new Error("Vault is not available. Verify your passkey first.");
+    if (!response.ok) throw new Error("Vault is not available. Verify your Google sign-in and try again.");
     const remote = (await response.json()).vault as Envelope | null;
     if (remote) void saveVaultSnapshot(remote).catch(() => { /* Offline access is optional. */ });
     return remote;

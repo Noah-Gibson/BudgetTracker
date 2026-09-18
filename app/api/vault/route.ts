@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { database } from "@/lib/server/db";
 import { vaults } from "@/lib/server/schema";
-import { requireOwner, requireSameOrigin, requireStepUp } from "@/lib/server/security";
+import { requireOwner, requireSameOrigin } from "@/lib/server/security";
 import { rateLimit } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
@@ -15,15 +15,14 @@ const writeSchema = z.object({ vaultId: z.string().uuid(), revision: z.number().
 export async function GET() {
   // An opted-in trusted browser has a non-exportable local key and may unlock
   // with its Google session alone. Reading ciphertext does not disclose the
-  // budget without that local key, recovery key, or passkey-derived wrapper.
+  // budget without that local key or recovery key.
   const owner = await requireOwner(); if (!rateLimit(`vault-read:${owner}`, 80)) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   const value = await database().query.vaults.findFirst({ where: eq(vaults.ownerHandle, owner) });
   return NextResponse.json({ vault: value ?? null }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(request: Request) {
-  // Writes from a trusted browser remain same-origin and Google-session
-  // bound. Destructive vault replacement still requires a fresh passkey below.
+  // Writes from a trusted browser remain same-origin and Google-session bound.
   await requireSameOrigin(); const owner = await requireOwner(); if (!rateLimit(`vault-write:${owner}`, 40)) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   const input = writeSchema.parse(await request.json()); const db = database();
   const existing = await db.query.vaults.findFirst({ where: eq(vaults.ownerHandle, owner) });
@@ -43,7 +42,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE() {
-  await requireSameOrigin(); const owner = await requireOwner(); if (!rateLimit(`vault-delete:${owner}`, 10)) return NextResponse.json({ error: "Too many requests" }, { status: 429 }); await requireStepUp(owner);
+  await requireSameOrigin(); const owner = await requireOwner(); if (!rateLimit(`vault-delete:${owner}`, 10)) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   await database().delete(vaults).where(eq(vaults.ownerHandle, owner));
   return new Response(null, { status: 204 });
 }

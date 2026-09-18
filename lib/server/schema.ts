@@ -14,6 +14,9 @@ export const vaults = pgTable("vaults", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
 }, (table) => [uniqueIndex("vault_owner_handle_unique").on(table.ownerHandle)]);
 
+// Legacy credentials remain in the database for existing deployments. They are
+// intentionally no longer read or written now that Google Drive recovery is
+// the sole account recovery flow.
 export const passkeys = pgTable("passkeys", {
   id: uuid("id").primaryKey().defaultRandom(),
   ownerHandle: varchar("owner_handle", { length: 64 }).notNull(),
