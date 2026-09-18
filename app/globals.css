@@ -352,7 +352,7 @@ button { touch-action: manipulation; }
   .expense-dialog .date-input-with-clear { align-items: center; }
   .expense-dialog .date-input-with-clear .native-input[type="date"], .expense-dialog .date-input-with-clear .clear-date-icon { block-size: 3rem; min-block-size: 3rem; max-block-size: 3rem; }
   .expense-dialog .remaining-balance-choice, .expense-dialog .recurring-choice { padding-block: .1rem; align-self: start; }
-  .expense-dialog .recurring-choice { grid-column: 2; grid-row: 3; margin-top: -.3rem; order: initial; }
+  .expense-dialog .recurring-choice { grid-column: 2; grid-row: 3; margin-top: -1.05rem; order: initial; }
   .expense-dialog .credit-card-choice { grid-row: 4; margin-top: .8rem; order: initial; }
   .expense-dialog .form-buttons { grid-row: 5; order: initial; }
 }
