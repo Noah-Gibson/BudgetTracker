@@ -104,7 +104,7 @@ button { touch-action: manipulation; }
 .income-panel { margin-top: .8rem; }
 .credit-card-panel { margin-top: .8rem; }
 .credit-card-form { grid-template-columns: minmax(0, 1fr); }
-.credit-card-indicator { margin-left: .45rem; color: var(--teal); font-size: .8em; }
+.credit-card-indicator { margin-inline: .45rem; color: var(--teal); font-size: .8em; }
 .income-panel-compact .p-card-body { padding: .8rem 1rem; }
 .income-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .income-summary > div { display: grid; min-width: 0; gap: .1rem; }
