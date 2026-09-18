@@ -167,7 +167,7 @@ button { touch-action: manipulation; }
 .muted { color: var(--muted); }
 .over { color: var(--rose); font-weight: 700; }
 
-.entry-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: .55rem; min-width: 0; }
+.entry-form { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: .55rem; row-gap: .8rem; min-width: 0; }
 .entry-form > * { min-width: 0; }
 .entry-form .p-inputtext, .entry-form .p-inputnumber, .entry-form .p-inputnumber-input, .entry-form .p-button { width: 100%; }
 .entry-form .p-button { justify-content: center; }
@@ -282,8 +282,9 @@ button { touch-action: manipulation; }
 .field label, .field-label { color: var(--ink); font-size: .82rem; font-weight: 700; }
 .field .p-inputtext, .field .p-inputnumber, .field .p-inputnumber-input, .native-input { width: 100%; }
 .native-input { min-width: 0; min-height: 2.6rem; padding: .55rem .65rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); }
+.native-input:disabled { border-color: var(--line); background: var(--surface-muted); color: var(--muted); cursor: not-allowed; opacity: 1; }
 .native-input.p-invalid { border-color: var(--rose); }
-.expense-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+.expense-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: .55rem; row-gap: .8rem; }
 .expense-details > .field { min-width: 0; }
 .native-input[type="date"] { display: block; box-sizing: border-box; inline-size: 100%; max-inline-size: 100%; min-inline-size: 0; }
 .date-input-with-clear { display: flex; inline-size: 100%; min-inline-size: 0; gap: .35rem; }
