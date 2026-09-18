@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DriveSpreadsheetBackup } from "@/components/drive-spreadsheet-backup";
 import { Button } from "primereact/button";
@@ -15,16 +14,14 @@ import { ProgressBar } from "primereact/progressbar";
 import { Toast } from "primereact/toast";
 import { addDays, bucketMeta, clonePayMonth, clonePeriod, createEmptyVault, cyclePayPeriod, dueDatesWithin, expenseListGroups, futureExpenseTotal, money, newId, todayISO, totals, upgradeVault, type BudgetVault, type Bucket, type CreditCardPayment, type ExpenseEntry, type IncomeEntry, type PayMonth, type BudgetCycle, type PayPeriod, type RecurringBill, type RecurringBillCandidate, type LegacyBudgetPeriod, type LegacyBudgetVault, type LegacyExpenseEntry, type V2BudgetVault } from "@/lib/budget/types";
 import { budgetWorkbook, importBudgetWorkbook } from "@/lib/budget/spreadsheet";
-import { decryptVault, encryptVault, exportVaultKey, generateVaultKey, importVaultKey, randomBytes, recoveryKey, unwrapWithPasskey, unwrapWithRecovery, wrapWithRecovery, type Envelope } from "@/lib/crypto/vault";
+import { decryptVault, encryptVault, exportVaultKey, generateVaultKey, importVaultKey, randomBytes, recoveryKey, unwrapWithRecovery, wrapWithRecovery, type Envelope } from "@/lib/crypto/vault";
 import { beginDriveRecoveryAuthorization, checkDriveRecoveryBackup, clearDriveRecoveryAuthorization, loadDriveRecoveryBackup, prepareDriveRecoveryAuthorization, removeDriveRecoveryBackup, saveDriveRecoveryBackup, type DriveRecoveryPackage, type SpreadsheetBackupResult } from "@/lib/drive/recovery";
 import { clearVaultSnapshot, loadVaultSnapshot, saveVaultSnapshot } from "@/lib/client/vault-snapshot";
 
 type ListEntry = { id: string; name: string; amountCents: number; date?: string; recurring?: boolean };
 type DriveBackupStatus = "unverified" | "verified" | "stale";
 type DriveUnlockStatus = "checking" | "connected" | "connect-required" | "missing-backup" | "stale-backup" | "unavailable" | "no-vault";
-type PasskeyDeviceEnvelope = { kind?: "passkey"; salt: string; wrappedKey: string; deviceId: string };
 type TrustedDeviceEnvelope = { kind: "trusted-device"; iv: string; wrappedKey: string; deviceId: string };
-type DeviceEnvelope = PasskeyDeviceEnvelope | TrustedDeviceEnvelope;
 const DEVICE_KEY = "cipher-budget:device-v1";
 const DEVICE_DATABASE = "cipher-budget-device-keys";
 const DEVICE_STORE = "keys";
@@ -44,13 +41,13 @@ const b64ToBytes = (value: string) => {
   const raw = atob(value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4));
   return Uint8Array.from(raw, (character) => character.charCodeAt(0));
 };
-function deviceEnvelope(): DeviceEnvelope | null {
+function deviceEnvelope(): TrustedDeviceEnvelope | null {
   try {
     const stored = localStorage.getItem(DEVICE_KEY);
-    const value = stored ? JSON.parse(stored) as { kind?: unknown; salt?: unknown; iv?: unknown; wrappedKey?: unknown; deviceId?: unknown } : null;
+    const value = stored ? JSON.parse(stored) as { kind?: unknown; iv?: unknown; wrappedKey?: unknown; deviceId?: unknown } : null;
     if (!value || typeof value.wrappedKey !== "string" || typeof value.deviceId !== "string") return null;
     if (value.kind === "trusted-device" && typeof value.iv === "string") return value as TrustedDeviceEnvelope;
-    return typeof value.salt === "string" ? value as PasskeyDeviceEnvelope : null;
+    return null;
   } catch { return null; }
 }
 function deviceDatabase() {
@@ -104,30 +101,6 @@ async function unlockTrustedDevice(device: TrustedDeviceEnvelope) {
   const raw = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBytes(device.iv) }, deviceKey, b64ToBytes(device.wrappedKey));
   return importVaultKey(new Uint8Array(raw));
 }
-function passkeyPrf(response: unknown): ArrayBuffer | undefined {
-  const first = (response as { clientExtensionResults?: { prf?: { results?: { first?: ArrayBuffer | Uint8Array | string } } } }).clientExtensionResults?.prf?.results?.first;
-  if (first instanceof ArrayBuffer) return first;
-  if (first instanceof Uint8Array) return first.buffer.slice(first.byteOffset, first.byteOffset + first.byteLength) as ArrayBuffer;
-  return typeof first === "string" ? b64ToBytes(first).buffer : undefined;
-}
-async function requestPasskey(mode: "registration" | "authentication", salt?: string) {
-  const optionsResponse = await fetch("/api/passkeys/options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, prfSalt: salt }) });
-  if (!optionsResponse.ok) throw new Error("Unable to start passkey verification. Check that the secure server environment is configured.");
-  const options = await optionsResponse.json();
-  // The API deliberately returns JSON-safe base64url. WebAuthn requires the
-  // native BufferSource form, and SimpleWebAuthn only converts its standard
-  // fields automatically, not extension inputs.
-  if (mode === "authentication" && salt && options.extensions?.prf?.eval?.first === salt) {
-    options.extensions.prf.eval.first = b64ToBytes(salt).buffer;
-  }
-  const response = mode === "registration" ? await startRegistration({ optionsJSON: options }) : await startAuthentication({ optionsJSON: options });
-  // The PRF output is client-only key material. Authentication verification
-  // does not need it, so never transmit it to the backend.
-  const { clientExtensionResults: _clientExtensionResults, ...responseForVerification } = response;
-  const verified = await fetch("/api/passkeys/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, response: responseForVerification }) });
-  if (!verified.ok) throw new Error("The passkey could not be verified.");
-  return { prf: mode === "authentication" ? passkeyPrf(response) : undefined };
-}
 function periodLabel(period: { startDate: string; endDate: string }) {
   const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
   const start = new Date(period.startDate + "T12:00:00").toLocaleDateString(undefined, options);
@@ -160,7 +133,7 @@ export function BudgetShell() {
 function Landing() { return <main className="landing">
     <ThemeToggle className="landing-theme-toggle" />
     <section className="landing-copy"><p className="eyebrow">PRIVATE BY DESIGN</p><h1>Your budget, visible only to you.</h1><p>Manage every pay-month budget in a vault encrypted in your browser. The service stores encrypted data—not your financial details.</p><GoogleSignInButton /></section>
-    <section className="security-panel"><i className="pi pi-shield security-icon" /><h2>We can&apos;t see your data</h2><ul><li>Google sign-in + a personal passkey</li><li>Browser-encrypted budget vault</li><li>Google Drive recovery backup</li><li>Pay-month budgeting that works beautifully on mobile</li></ul></section>
+    <section className="security-panel"><i className="pi pi-shield security-icon" /><h2>We can&apos;t see your data</h2><ul><li>Google sign-in</li><li>Browser-encrypted budget vault</li><li>Google Drive recovery backup</li><li>Pay-month budgeting that works beautifully on mobile</li></ul></section>
   </main>; }
 
 function OfflineAwareLanding() {
@@ -212,7 +185,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const preparedDriveBackup = useRef<DriveRecoveryPackage | null>(null);
   const pendingSave = useRef<BudgetVault | null>(null);
   const saveInFlight = useRef<Promise<void> | null>(null);
-  const lock = useCallback((message = "Vault locked. Verify your passkey to continue.") => {
+  const lock = useCallback((message = "Vault locked. Use Google Drive recovery to continue.") => {
     pendingSave.current = null; activeKey.current = null; activeEnvelope.current = null;
     setVault(null); setKey(null); setEnvelope(null); setNotice(message);
   }, []);
@@ -234,19 +207,9 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     setBusy(true); setNotice("");
     try {
       const device = deviceEnvelope(); if (!device) throw new Error("No remembered vault key is stored in this browser.");
-      if (device.kind === "trusted-device") {
-        const remote = await fetchEnvelope();
-        if (!remote) { setSetup(true); return; }
-        const unlocked = await unlockTrustedDevice(device);
-        const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document); activeKey.current = unlocked; activeEnvelope.current = remote;
-        if (document.version !== 3) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
-        setKey(unlocked); setEnvelope(remote); setVault(decrypted);
-        return;
-      }
-      const assertion = await requestPasskey("authentication", device.salt); const remote = await fetchEnvelope();
+      const remote = await fetchEnvelope();
       if (!remote) { setSetup(true); return; }
-      if (!assertion.prf) throw new Error("This passkey cannot unlock the remembered vault. Use your recovery key to enroll a supported browser.");
-      const unlocked = await unwrapWithPasskey(device.wrappedKey, assertion.prf, b64ToBytes(device.salt));
+      const unlocked = await unlockTrustedDevice(device);
       const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document); activeKey.current = unlocked; activeEnvelope.current = remote;
       if (document.version !== 3) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
       setKey(unlocked); setEnvelope(remote); setVault(decrypted);
@@ -298,9 +261,8 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const unlockRecovery = async (recoveryValue = recovery, source = "recovery key", expectedVaultId?: string) => {
     setBusy(true); setNotice("");
     try {
-      // A new browser has no site passkey yet. Retrieve only the account's
-      // ciphertext, validate the recovery key locally, then verify a local
-      // passkey or optionally enroll one before exposing the decrypted budget.
+      // Retrieve the account's ciphertext and validate the recovery key locally.
+      // Google sign-in plus the recovery package is sufficient to unlock it.
       const remote = await fetchEnvelope();
       if (!remote) { setSetup(true); return; }
       if (expectedVaultId && remote.vaultId !== expectedVaultId) {
@@ -309,21 +271,6 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         throw new Error("This Google Drive backup belongs to a deleted or different vault. Use the current vault’s recovery method instead.");
       }
       const unlocked = await unwrapWithRecovery(recoveryValue, remote.recoverySalt!, remote.recoveryWrappedKey!);
-      let addedPasskey = false;
-      try {
-        // An existing passkey on this browser is sufficient. Do not create a
-        // second credential just because the user chose recovery unlock.
-        await requestPasskey("authentication");
-      } catch {
-        // WebAuthn cannot reliably distinguish a missing local credential
-        // from a cancelled chooser. Make adding a credential an explicit,
-        // informed fallback rather than silently registering another one.
-        if (!window.confirm("No existing Cipher Budget passkey was verified on this browser. Create a new passkey for this browser now?")) {
-          throw new Error("Vault recovery was cancelled before a browser passkey was verified.");
-        }
-        await requestPasskey("registration");
-        addedPasskey = true;
-      }
       if (remember) {
         const trustedDevice = await rememberTrustedDevice(unlocked);
         localStorage.setItem(DEVICE_KEY, JSON.stringify(trustedDevice));
@@ -341,7 +288,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         setStaleDriveVaultId(null);
       }
       setRecovery(""); setKey(unlocked); setEnvelope(remote); setVault(openedVault);
-      toast.current?.show({ severity: "success", summary: addedPasskey ? "Browser passkey added" : "Vault unlocked", detail: remember ? "This trusted browser will also reopen with your Google session." : addedPasskey ? "Keep your backup method available if this browser is forgotten." : `Unlocked with ${source}.` });
+      toast.current?.show({ severity: "success", summary: "Vault unlocked", detail: remember ? "This trusted browser will also reopen with your Google session." : `Unlocked with ${source}.` });
     } catch (error) { setNotice(error instanceof Error ? error.message : "The recovery key could not unlock this vault."); } finally { setBusy(false); }
   };
   const unlockPreparedDriveBackup = async () => {
@@ -374,8 +321,6 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const startSetup = async () => {
     setBusy(true); setNotice("");
     try {
-      await requestPasskey("registration");
-      await requestPasskey("authentication");
       // A browser can lose its remembered envelope while the encrypted vault
       // remains on the server. Never try to overwrite that vault as a fresh
       // revision-one save; require the explicit destructive reset decision.
@@ -394,25 +339,15 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
       activeKey.current = vaultKey; activeEnvelope.current = initialEnvelope;
       setKey(vaultKey); setVault(initialVault); setEnvelope(initialEnvelope);
       setDriveBackup({ vaultId: initialEnvelope.vaultId, recoveryKey: code }); setSetup(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Passkey setup failed.";
-      if (/previously registered|already registered/i.test(message)) {
-        setNotice("This passkey is already registered. Use “Reset vault with saved passkey” if you want to permanently replace the old vault.");
-      } else {
-        setNotice(message);
-      }
-    } finally { setBusy(false); }
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to create the vault."); } finally { setBusy(false); }
   };
-  const verifyExistingPasskeyForReset = async (manageBusy = true) => {
+  const beginVaultReset = async (manageBusy = true) => {
     if (manageBusy) { setBusy(true); setNotice(""); }
     try {
-      // Reset is an ordinary passkey authentication. It must not depend on the
-      // optional PRF extension, which some password-manager passkeys omit.
-      await requestPasskey("authentication");
       const remote = await fetchEnvelope();
       setResetCandidate({ replaceExisting: Boolean(remote), deletedVaultId: remote?.vaultId });
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "The saved passkey could not be verified.");
+      setNotice(error instanceof Error ? error.message : "The existing vault could not be checked.");
     } finally { if (manageBusy) setBusy(false); }
   };
   const confirmVaultReset = async () => {
@@ -647,7 +582,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
         <div className="recovery-unlock">
           <h2>{driveUnlockStatus === "connected" ? "Google Drive backup connected" : "Restore an existing vault"}</h2>
           {driveUnlockStatus === "checking" && <p className="form-help"><i className="pi pi-spin pi-spinner" aria-hidden="true" /> Checking your Google Drive recovery…</p>}
-          {driveUnlockStatus === "connected" && <><p className="drive-connected"><i className="pi pi-check-circle" aria-hidden="true" /> Your existing Google Drive permission is ready. Unlock with your passkey—no second Google sign-in.</p><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser</label></div><Button label="Unlock vault" icon="pi pi-lock-open" loading={busy} onClick={() => void unlockPreparedDriveBackup()} /></>}
+          {driveUnlockStatus === "connected" && <><p className="drive-connected"><i className="pi pi-check-circle" aria-hidden="true" /> Your existing Google Drive permission is ready. Unlock without a second Google sign-in.</p><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser</label></div><Button label="Unlock vault" icon="pi pi-lock-open" loading={busy} onClick={() => void unlockPreparedDriveBackup()} /></>}
           {driveUnlockStatus === "connect-required" && <><p>Your Google Drive recovery is not connected in this browser yet.</p><div className="remember-choice"><Checkbox inputId="remember-unlock" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-unlock">Remember this personal browser</label></div><Button outlined label="Continue with Google Drive" icon="pi pi-google" loading={busy} disabled={!driveReady} onClick={() => void connectDriveAndUnlock()} /></>}
           {driveUnlockStatus === "missing-backup" && <p className="form-help">No Cipher Budget recovery backup was found in this Google Drive account. Use the correct Google account or a recovery key instead.</p>}
           {driveUnlockStatus === "stale-backup" && <p className="error">This Google Drive backup belongs to a deleted or different vault. It cannot unlock this vault.</p>}
@@ -655,16 +590,16 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
           {hasDevice && driveUnlockStatus !== "connected" && <Button outlined label="Unlock remembered vault" icon="pi pi-key" loading={busy} onClick={() => void unlockRemembered()} />}
           {showManualUnlock ? <div className="advanced-recovery"><p>Use this only if Google Drive recovery is unavailable.</p><InputText value={recovery} onChange={(event) => setRecovery(event.target.value)} placeholder="Recovery key" autoComplete="off" /><Button text label="Recover with key" icon="pi pi-key" loading={busy} onClick={() => void unlockRecovery()} /></div> : <Button text className="advanced-link" label="Use a recovery key instead" onClick={() => setShowManualUnlock(true)} />}
         </div>
-        <Button text label="Set up a replacement passkey and vault" icon="pi pi-plus" disabled={busy} onClick={() => setSetup(true)} />
+        <Button text label="Create a new vault" icon="pi pi-plus" disabled={busy} onClick={() => setSetup(true)} />
       </>}
-      {driveUnlockStatus !== "no-vault" && <Button text severity="danger" label="Reset vault with saved passkey" icon="pi pi-refresh" loading={busy} onClick={() => void verifyExistingPasskeyForReset()} />}
+      {driveUnlockStatus !== "no-vault" && <Button text severity="danger" label="Reset vault" icon="pi pi-refresh" loading={busy} onClick={() => void beginVaultReset()} />}
     </section>}
-    {setup && <section className="unlock-card"><i className="pi pi-key unlock-icon" /><h1>Create your encrypted vault</h1><p>Set up a site passkey. It is required alongside Google sign-in to access your financial data.</p><div className="remember-choice"><Checkbox inputId="remember-setup" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-setup">Remember this personal browser</label></div><small>Only select this on a personal, device-encrypted browser profile. It stores an encrypted vault-key envelope locally and still requires your Google session; it never stores budget plaintext or the raw vault key.</small>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create vault with new passkey" icon="pi pi-shield" loading={busy} onClick={startSetup} /><Button text label="Back" onClick={() => setSetup(false)} /></div></section>}
+    {setup && <section className="unlock-card"><i className="pi pi-key unlock-icon" /><h1>Create your encrypted vault</h1><p>Google sign-in and your Google Drive recovery backup protect access to your financial data.</p><div className="remember-choice"><Checkbox inputId="remember-setup" checked={remember} onChange={(event) => setRemember(Boolean(event.checked))} /><label htmlFor="remember-setup">Remember this personal browser</label></div><small>Only select this on a personal, device-encrypted browser profile. It stores an encrypted vault-key envelope locally and still requires your Google session; it never stores budget plaintext or the raw vault key.</small>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create encrypted vault" icon="pi pi-shield" loading={busy} onClick={startSetup} /><Button text label="Back" onClick={() => setSetup(false)} /></div></section>}
     {vault && !driveBackup && <><PayMonthBoard vault={vault} onChange={(next) => { setVault(next); void save(next).catch((error) => setNotice(error instanceof Error ? error.message : "Save failed")); }} /><section className="drive-backup-settings"><div><i className="pi pi-google" /><span><strong>{hasVerifiedDriveBackup ? "Google Drive recovery" : "Move recovery to Google Drive"}</strong><small>{hasVerifiedDriveBackup ? "Your recovery secret was verified directly in your hidden Google Drive app-data folder. Cipher Budget cannot read it." : "This vault is not backed up to Google Drive yet. Replace the recovery key with a newly generated Google Drive recovery secret."}</small></span></div><div className="data-tool-actions">{hasVerifiedDriveBackup ? <><Button outlined label="Verify backup" icon="pi pi-check-circle" loading={busy} disabled={!driveReady} onClick={() => void verifyDriveBackup()} /><Button text severity="danger" label="Remove backup" icon="pi pi-trash" loading={busy} disabled={!driveReady} onClick={() => void removeDriveBackup()} /></> : <Button label="Use Google Drive recovery" icon="pi pi-google" loading={busy} disabled={!driveReady} onClick={() => { setNotice(""); setShowDriveMigration(true); }} />}</div>{notice && <p className="transfer-status" role="status">{notice}</p>}</section><DriveSpreadsheetBackup vault={vault} email={email} driveReady={driveReady} onChange={(next) => { setVault(next); void save(next).catch((error) => setNotice(error instanceof Error ? error.message : "Save failed")); }} onBackupSuccess={(result: SpreadsheetBackupResult) => { setVault((current) => { if (!current?.spreadsheetBackup?.enabled) return current; const next = { ...current, spreadsheetBackup: { ...current.spreadsheetBackup, folderId: result.folderId, lastSuccessfulDate: result.backupDate, lastBackupFileId: result.fileId, lastBackupAt: result.backedUpAt } }; void save(next).catch((error) => setNotice(error instanceof Error ? error.message : "Backup status could not be saved.")); return next; }); }} />{driveBackupStatus === "stale" && staleDriveVaultId && <section className="drive-backup-settings stale-drive-backup"><div><i className="pi pi-exclamation-triangle" /><span><strong>Old Google Drive backup</strong><small>A recovery package for the deleted vault may remain in Google Drive. It cannot unlock this vault and this vault is not backed up there.</small></span></div><div className="data-tool-actions"><Button outlined severity="secondary" label="Check and remove old backup" icon="pi pi-trash" loading={busy} disabled={!driveReady} onClick={() => void removeStaleDriveBackup()} /></div></section>}</>}
     <Dialog visible={Boolean(driveBackup)} modal closable={false} dismissableMask={false} header="Back up your private budget" className="recovery-dialog" onHide={() => { }}><h2 className="dialog-question">Why do we need access to your Google Drive?</h2><p>We&apos;re storing the key that unlocks your data with you, not with us. That&apos;s what makes your data private from us. We can only access the key we store, not any other files in your Drive.</p><p className="form-help">Google Drive recovery is the recommended way to keep your budget available without managing a recovery key yourself.</p>{!driveReady && <p className="form-help">Preparing secure Google Drive access…</p>}{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Back up securely to Google Drive" icon="pi pi-google" loading={busy} disabled={!driveReady} onClick={() => void completeDriveBackup()} /><Button text className="advanced-link" label="Can’t use Google Drive?" disabled={busy} onClick={() => setShowManualRecovery(true)} /></div><Dialog visible={showManualRecovery} modal header="Use a manual recovery key?" onHide={() => setShowManualRecovery(false)}><p>This advanced option is for people who cannot use Google Drive. You will need to save and verify a long recovery key yourself before the budget can be used.</p><div className="button-row"><Button outlined label="Use manual recovery key" icon="pi pi-key" onClick={useManualBackup} /><Button text label="Back to Google Drive" onClick={() => setShowManualRecovery(false)} /></div></Dialog></Dialog>
     <Dialog visible={showDriveMigration} modal closable={!busy} dismissableMask={!busy} header="Move recovery to Google Drive" className="recovery-dialog" onHide={() => { if (!busy) setShowDriveMigration(false); }}><p>We will generate a completely new recovery secret in this browser, store it directly in your selected Google Drive account, and read it back to verify it.</p><p className="danger-copy">After verification and the encrypted vault update succeed, your current manual recovery key will no longer unlock this vault. Any existing Cipher Budget recovery backup in the selected Google Drive account will be replaced.</p><p className="form-help">Cipher Budget never receives the Google Drive token or either recovery secret.</p>{!driveReady && <p className="form-help">Preparing secure Google Drive access…</p>}{notice && <p className="error">{notice}</p>}<div className="button-row"><Button label="Create Google Drive recovery" icon="pi pi-google" loading={busy} disabled={!driveReady} onClick={() => void moveRecoveryToDrive()} /><Button text label="Cancel" disabled={busy} onClick={() => setShowDriveMigration(false)} /></div></Dialog>
-    <Dialog visible={Boolean(resetCandidate)} modal closable={!busy} dismissableMask={false} header={resetCandidate?.replaceExisting ? "Permanently replace encrypted vault?" : "Create a new vault?"} className="recovery-dialog" onHide={() => { if (!busy) setResetCandidate(null); }}><p className="danger-copy">{resetCandidate?.replaceExisting ? "You cannot unlock the existing vault with this passkey alone. Continuing permanently deletes its encrypted ciphertext. Even if you find the old recovery backup later, the old budget data cannot be recovered." : "No existing encrypted vault was found. Continuing creates a new empty vault with your verified passkey."}</p><p>You will back up the new vault to Google Drive before it can be used.</p>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button severity="danger" label={resetCandidate?.replaceExisting ? "Delete old vault and create new" : "Create new vault"} icon="pi pi-exclamation-triangle" loading={busy} onClick={confirmVaultReset} /><Button text label="Cancel" disabled={busy} onClick={() => setResetCandidate(null)} /></div></Dialog>
-    <Dialog visible={Boolean(createdRecovery)} modal closable={false} dismissableMask={false} header="Record your recovery key" className="recovery-dialog" onHide={() => setShowAbandon(true)}><p className="danger-copy">This recovery key is the only backup if you lose your passkey. If you do not record it, you WILL permanently lose access to all your budget data. After this screen is closed, it is never accessible or recoverable by anyone again.</p><code className="recovery-code">{createdRecovery}</code><div className="button-row"><Button text label="Copy" icon="pi pi-copy" onClick={() => navigator.clipboard.writeText(createdRecovery)} /><Button text label="Print" icon="pi pi-print" onClick={() => window.print()} /><Button text label="Save text" icon="pi pi-download" onClick={() => void saveRecoveryKey()} /></div><p>Store it in a password manager or another secure offline location. Do not share it or keep it in unsecured notes.</p><label htmlFor="confirm-recovery">Enter the complete recovery key to verify you recorded it.</label><InputText id="confirm-recovery" value={confirmRecovery} onChange={(event) => setConfirmRecovery(event.target.value)} autoComplete="off" className="full-width" />{notice && <p className="error">{notice}</p>}<Button label="I recorded it — secure my vault" icon="pi pi-check" loading={busy} disabled={busy} onClick={confirmCeremony} /><Button text severity="secondary" label="I need more time" disabled={busy} onClick={() => setShowAbandon(true)} /><Dialog visible={showAbandon} modal header="Leave vault setup?" onHide={() => setShowAbandon(false)}><p>If you leave without recording and verifying this key, all newly created encrypted vault data will be discarded. You will need to set up a new vault later.</p><Button severity="danger" label="Discard unverified vault" onClick={() => { setCreatedRecovery(""); setConfirmRecovery(""); setShowAbandon(false); lock("Vault setup was abandoned. No financial data was saved."); }} /></Dialog></Dialog>
+    <Dialog visible={Boolean(resetCandidate)} modal closable={!busy} dismissableMask={false} header={resetCandidate?.replaceExisting ? "Permanently replace encrypted vault?" : "Create a new vault?"} className="recovery-dialog" onHide={() => { if (!busy) setResetCandidate(null); }}><p className="danger-copy">{resetCandidate?.replaceExisting ? "Continuing permanently deletes this vault’s encrypted ciphertext. Even if you find the old recovery backup later, the old budget data cannot be recovered." : "No existing encrypted vault was found. Continuing creates a new empty vault."}</p><p>You will back up the new vault to Google Drive before it can be used.</p>{notice && <p className="error">{notice}</p>}<div className="button-row"><Button severity="danger" label={resetCandidate?.replaceExisting ? "Delete old vault and create new" : "Create new vault"} icon="pi pi-exclamation-triangle" loading={busy} onClick={confirmVaultReset} /><Button text label="Cancel" disabled={busy} onClick={() => setResetCandidate(null)} /></div></Dialog>
+    <Dialog visible={Boolean(createdRecovery)} modal closable={false} dismissableMask={false} header="Record your recovery key" className="recovery-dialog" onHide={() => setShowAbandon(true)}><p className="danger-copy">This recovery key is the only backup if you cannot use Google Drive. If you do not record it, you WILL permanently lose access to all your budget data. After this screen is closed, it is never accessible or recoverable by anyone again.</p><code className="recovery-code">{createdRecovery}</code><div className="button-row"><Button text label="Copy" icon="pi pi-copy" onClick={() => navigator.clipboard.writeText(createdRecovery)} /><Button text label="Print" icon="pi pi-print" onClick={() => window.print()} /><Button text label="Save text" icon="pi pi-download" onClick={() => void saveRecoveryKey()} /></div><p>Store it in a password manager or another secure offline location. Do not share it or keep it in unsecured notes.</p><label htmlFor="confirm-recovery">Enter the complete recovery key to verify you recorded it.</label><InputText id="confirm-recovery" value={confirmRecovery} onChange={(event) => setConfirmRecovery(event.target.value)} autoComplete="off" className="full-width" />{notice && <p className="error">{notice}</p>}<Button label="I recorded it — secure my vault" icon="pi pi-check" loading={busy} disabled={busy} onClick={confirmCeremony} /><Button text severity="secondary" label="I need more time" disabled={busy} onClick={() => setShowAbandon(true)} /><Dialog visible={showAbandon} modal header="Leave vault setup?" onHide={() => setShowAbandon(false)}><p>If you leave without recording and verifying this key, all newly created encrypted vault data will be discarded. You will need to set up a new vault later.</p><Button severity="danger" label="Discard unverified vault" onClick={() => { setCreatedRecovery(""); setConfirmRecovery(""); setShowAbandon(false); lock("Vault setup was abandoned. No financial data was saved."); }} /></Dialog></Dialog>
   </main>;
 }
 
@@ -736,7 +671,7 @@ function PayMonthBucketPanel({ bucket, vault, month, income, spent, onChange }: 
   const nameId = `${bucket}-pay-month-expense-name`; const amountId = `${bucket}-pay-month-expense-amount`; const dateId = `${bucket}-pay-month-expense-date`;
   const close = () => { setOpen(false); clear(); };
   const editExpense = (expense?: ExpenseEntry, confirming = false) => { if (expense) { setEditing(expense); setName(expense.name); setAmount(expense.amountCents / 100); setDate(expense.date ?? ""); setRecurring(Boolean(expense.templateId)); setCreditCardId(expense.creditCardId ?? ""); setUseRemainingBalance(false); setConfirmationMode(confirming); setError(""); } else { clear(); } setOpen(true); };
-  return <><Card className={`bucket-card ${bucket}`}><div className="bucket-header"><div><p>{bucketMeta[bucket].label}</p><strong>{money(remaining)} <small>remaining</small></strong></div><div className="target-input"><label htmlFor={`${bucket}-pay-month-target`}>Pay-month target</label><InputNumber inputId={`${bucket}-pay-month-target`} value={month.targetPercentages[bucket]} min={0} max={100} maxFractionDigits={2} useGrouping={false} suffix="%" onValueChange={(event) => replaceMonth({ ...month, targetPercentages: { ...month.targetPercentages, [bucket]: Math.min(100, Math.max(0, event.value ?? 0)) } })} /></div></div><div className="expense-progress" style={{ "--expensed-progress": `${expensedProgress}%`, "--unpaid-progress": `${unpaidProgress}%` } as React.CSSProperties}><ProgressBar value={expensedProgress} showValue={false} />{unpaidProgress > 0 && <span className="unpaid-progress" aria-hidden="true" />}</div><p className={remaining < 0 ? "over" : "muted"}>{money(spent)} expensed · {money(unpaid)} unpaid of {money(target)}</p><Button className="new-expense-button" label="New expense" icon="pi pi-plus" onClick={() => editExpense()} /><PayMonthExpenseList entries={expenses} creditCards={creditCards} onEdit={editExpense} onConfirm={(expense) => editExpense(expense, true)} /></Card><Dialog visible={open} modal header={confirmationMode ? "Confirm expense" : editing ? "Edit expense" : "New expense"} className="compact-dialog expense-dialog" onHide={close}><div className="entry-form expense-form"><div className="field"><label htmlFor={nameId}>Expense name</label><InputText id={nameId} value={name} invalid={Boolean(error && !name.trim())} onChange={(event) => { setName(event.target.value); setError(""); }} placeholder={expenseHints[bucket]} /></div><div className="expense-details"><div className="field"><label htmlFor={amountId}>Amount</label><InputNumber inputId={amountId} value={amount} disabled={useRemainingBalance} invalid={Boolean(error && (!amount || amount <= 0))} onValueChange={(event) => { setAmount(event.value ?? null); setUseRemainingBalance(false); setError(""); }} mode="currency" currency="USD" locale="en-US" placeholder="$0.00" /><div className="remember-choice remaining-balance-choice"><Checkbox inputId={`${bucket}-remaining-balance`} checked={useRemainingBalance} disabled={availableBalanceCents <= 0} onChange={(event) => { const checked = Boolean(event.checked); setUseRemainingBalance(checked); if (checked) { setAmount(availableBalanceCents / 100); setError(""); } }} /><label htmlFor={`${bucket}-remaining-balance`}>Remaining category balance</label></div></div><div className="field expense-date-field"><label htmlFor={dateId}>Date {recurring || creditCardId ? "" : <span className="optional-label">(optional)</span>}</label><div className="date-input-with-clear"><input className="native-input" id={dateId} type="date" min={month.startDate} max={month.endDate} value={creditCardId ? creditCardDate ?? "" : date} disabled={Boolean(creditCardId)} onChange={(event) => syncDate(event.currentTarget.value)} onBlur={(event) => syncDate(event.currentTarget.value)} />{!recurring && !creditCardId && <button type="button" className="clear-date-icon" aria-label="Clear date" title="Clear date" onClick={() => syncDate("")}><i className="pi pi-times" aria-hidden="true" /></button>}</div></div></div><div className="field credit-card-choice"><label htmlFor={`${bucket}-credit-card`}>Credit card <span className="optional-label">(optional)</span></label><select id={`${bucket}-credit-card`} value={creditCardId} onChange={(event) => { const nextId = event.target.value; setCreditCardId(nextId); const nextCard = creditCards.find((item) => item.id === nextId); setDate(nextCard ? dueDatesWithin(month.startDate, month.endDate, nextCard.dueDay)[0] ?? "" : date); setError(""); }}><option value="">Not a credit card payment</option>{creditCards.map((card) => <option key={card.id} value={card.id}>{card.name} · day {card.dueDay}</option>)}</select>{creditCardId && <small className="form-help">The payment date is locked while this expense is linked to a card.</small>}</div><div className="remember-choice recurring-choice"><Checkbox inputId={`${bucket}-recurring`} checked={recurring} onChange={(event) => { setRecurring(Boolean(event.checked)); setError(""); }} /><label htmlFor={`${bucket}-recurring`}>Recurring monthly</label></div><div className="form-buttons"><Button label={confirmationMode ? "Confirm expense" : editing ? "Save expense" : "Add expense"} icon={editing ? "pi pi-check" : "pi pi-plus"} onClick={submit} />{editing && <><Button outlined label="Cancel" onClick={clear} /><Button outlined severity="danger" label="Delete expense" icon="pi pi-trash" onClick={deleteExpense} /></>}</div></div>{error && <p className="form-error" role="alert">{error}</p>}</Dialog></>;
+  return <><Card className={`bucket-card ${bucket}`}><div className="bucket-header"><div><p>{bucketMeta[bucket].label}</p><strong>{money(remaining)} <small>remaining</small></strong></div><div className="target-input"><label htmlFor={`${bucket}-pay-month-target`}>Pay-month target</label><InputNumber inputId={`${bucket}-pay-month-target`} value={month.targetPercentages[bucket]} min={0} max={100} maxFractionDigits={2} useGrouping={false} suffix="%" onValueChange={(event) => replaceMonth({ ...month, targetPercentages: { ...month.targetPercentages, [bucket]: Math.min(100, Math.max(0, event.value ?? 0)) } })} /></div></div><div className="expense-progress" style={{ "--expensed-progress": `${expensedProgress}%`, "--unpaid-progress": `${unpaidProgress}%` } as React.CSSProperties}><ProgressBar value={expensedProgress} showValue={false} />{unpaidProgress > 0 && <span className="unpaid-progress" aria-hidden="true" />}</div><p className={remaining < 0 ? "over" : "muted"}>{money(spent)} expensed · {money(unpaid)} unpaid of {money(target)}</p><Button className="new-expense-button" label="New expense" icon="pi pi-plus" onClick={() => editExpense()} /><PayMonthExpenseList entries={expenses} creditCards={creditCards} onEdit={editExpense} onConfirm={(expense) => editExpense(expense, true)} /></Card><Dialog visible={open} modal header={confirmationMode ? "Confirm expense" : editing ? "Edit expense" : "New expense"} className="compact-dialog expense-dialog" onHide={close}><div className="entry-form expense-form"><div className="field"><label htmlFor={nameId}>Expense name</label><InputText id={nameId} value={name} invalid={Boolean(error && !name.trim())} onChange={(event) => { setName(event.target.value); setError(""); }} placeholder={expenseHints[bucket]} /></div><div className="expense-details"><div className="field"><label htmlFor={amountId}>Amount</label><InputNumber inputId={amountId} value={amount} disabled={useRemainingBalance} invalid={Boolean(error && (!amount || amount <= 0))} onValueChange={(event) => { setAmount(event.value ?? null); setUseRemainingBalance(false); setError(""); }} mode="currency" currency="USD" locale="en-US" placeholder="$0.00" /><div className="remember-choice remaining-balance-choice"><Checkbox inputId={`${bucket}-remaining-balance`} checked={useRemainingBalance} disabled={availableBalanceCents <= 0} onChange={(event) => { const checked = Boolean(event.checked); setUseRemainingBalance(checked); if (checked) { setAmount(availableBalanceCents / 100); setError(""); } }} /><label htmlFor={`${bucket}-remaining-balance`}>Remaining category balance</label></div></div><div className="field expense-date-field"><label htmlFor={dateId}>Date {recurring || creditCardId ? "" : <span className="optional-label">(optional)</span>}</label><div className="date-input-with-clear"><input className="native-input" id={dateId} type="date" min={month.startDate} max={month.endDate} value={creditCardId ? creditCardDate ?? "" : date} disabled={Boolean(creditCardId)} onChange={(event) => syncDate(event.currentTarget.value)} onBlur={(event) => syncDate(event.currentTarget.value)} />{!recurring && !creditCardId && <button type="button" className="clear-date-icon" aria-label="Clear date" title="Clear date" onClick={() => syncDate("")}><i className="pi pi-times" aria-hidden="true" /></button>}</div></div></div><div className="field credit-card-choice"><label htmlFor={`${bucket}-credit-card`}>Credit card <span className="optional-label">(optional)</span></label><select id={`${bucket}-credit-card`} value={creditCardId} onChange={(event) => { const nextId = event.target.value; setCreditCardId(nextId); const nextCard = creditCards.find((item) => item.id === nextId); setDate(nextCard ? dueDatesWithin(month.startDate, month.endDate, nextCard.dueDay)[0] ?? "" : date); setError(""); }}><option value="">Not a credit card payment</option>{creditCards.map((card) => <option key={card.id} value={card.id}>{card.name} · {ordinal(card.dueDay)} of every month</option>)}</select>{creditCardId && <small className="form-help">The payment date is locked while this expense is linked to a card.</small>}</div><div className="remember-choice recurring-choice"><Checkbox inputId={`${bucket}-recurring`} checked={recurring} onChange={(event) => { setRecurring(Boolean(event.checked)); setError(""); }} /><label htmlFor={`${bucket}-recurring`}>Recurring monthly</label></div><div className="form-buttons"><Button label={confirmationMode ? "Confirm expense" : editing ? "Save expense" : "Add expense"} icon={editing ? "pi pi-check" : "pi pi-plus"} onClick={submit} />{editing && <><Button outlined label="Cancel" onClick={clear} /><Button outlined severity="danger" label="Delete expense" icon="pi pi-trash" onClick={deleteExpense} /></>}</div></div>{error && <p className="form-error" role="alert">{error}</p>}</Dialog></>;
 }
 
 function ordinal(day: number) {
