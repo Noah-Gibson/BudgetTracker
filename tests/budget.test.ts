@@ -15,6 +15,17 @@ describe("pay-month budgets", () => {
     expect(totals(month)).toMatchObject({ income: 400000, expenses: 120000, remaining: 280000 });
   });
 
+  it("keeps a fully allocated pay-month balanced when category rounding differs by a cent", () => {
+    const month = clonePayMonth(undefined, "2026-08-14", { needs: 33.33, goals: 33.33, wants: 33.34 }, []);
+    month.incomes.push({ id: "pay", name: "Pay", amountCents: 10005 });
+    month.expenses.push(
+      { id: "needs", name: "Needs", amountCents: 3335, bucket: "needs" },
+      { id: "goals", name: "Goals", amountCents: 3335, bucket: "goals" },
+      { id: "wants", name: "Wants", amountCents: 3336, bucket: "wants" }
+    );
+    expect(totals(month)).toMatchObject({ income: 10005, expenses: 10006, remaining: 0 });
+  });
+
   it("copies all income and schedules recurring monthly expenses once", () => {
     const vault = createEmptyVault(); const recurring = { id: "rent", name: "Rent", amountCents: 120000, bucket: "needs" as const, dueDay: 31, active: true };
     const first = clonePayMonth(undefined, "2026-01-15", vault.settings.defaultTargets, [recurring]);
@@ -41,6 +52,13 @@ describe("pay-month budgets", () => {
     expect(groups.future.map((entry) => entry.id)).toEqual(["tomorrow", "later"]);
     expect(expenseListGroups(entries.filter((entry) => entry.date !== "2026-08-24" && entry.date !== "2026-08-30"), "2026-08-23").future).toEqual([]);
     expect(futureExpenseTotal(entries, "2026-08-23")).toBe(1000);
+  });
+
+  it("keeps credit card payment settings in a new encrypted vault", () => {
+    const vault = createEmptyVault();
+    vault.creditCards?.push({ id: "visa", name: "Travel Visa", dueDay: 15 });
+    expect(vault.creditCards).toEqual([{ id: "visa", name: "Travel Visa", dueDay: 15 }]);
+    expect(dueDatesWithin("2026-08-14", "2026-09-10", vault.creditCards![0].dueDay)).toEqual(["2026-08-15"]);
   });
 
   it("consolidates legacy entries and creates dated recurring expenses locally", () => {

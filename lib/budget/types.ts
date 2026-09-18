@@ -1,14 +1,15 @@
 export type Bucket = "needs" | "goals" | "wants";
 
 export type IncomeEntry = { id: string; name: string; amountCents: number; date?: string };
-export type ExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; templateId?: string; amountConfirmed?: boolean };
+export type CreditCardPayment = { id: string; name: string; dueDay: number };
+export type ExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; templateId?: string; amountConfirmed?: boolean; creditCardId?: string };
 /** Stored in the encrypted vault; it intentionally has no dedicated UI panel. */
 export type RecurringExpense = { id: string; name: string; amountCents: number; bucket: Bucket; dueDay: number; active: boolean };
 export type PayMonth = { id: string; startDate: string; endDate: string; targetPercentages: Record<Bucket, number>; incomes: IncomeEntry[]; expenses: ExpenseEntry[] };
 export type SpreadsheetBackupSettings = { enabled: boolean; folderId?: string; lastSuccessfulDate?: string; lastBackupFileId?: string; lastBackupAt?: string };
 // This is encrypted alongside the budget. It is a recovery-method label only;
 // it never contains a Drive token, recovery secret, or any financial data.
-export type BudgetVault = { version: 3; settings: { defaultTargets: Record<Bucket, number> }; payMonths: PayMonth[]; recurringExpenses: RecurringExpense[]; recoveryProvider?: "google-drive"; spreadsheetBackup?: SpreadsheetBackupSettings };
+export type BudgetVault = { version: 3; settings: { defaultTargets: Record<Bucket, number> }; payMonths: PayMonth[]; recurringExpenses: RecurringExpense[]; creditCards?: CreditCardPayment[]; recoveryProvider?: "google-drive"; spreadsheetBackup?: SpreadsheetBackupSettings };
 
 // Decrypt-only formats. Every conversion below runs in the browser before re-encryption.
 export type LegacyExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; recurring: boolean };
@@ -56,7 +57,7 @@ export function futureExpenseTotal(entries: Array<{ amountCents: number; date?: 
 }
 
 export function addDays(start: string, days: number) { const d = new Date(`${start}T12:00:00`); d.setDate(d.getDate() + days); return localDateISO(d); }
-export function createEmptyVault(): BudgetVault { return { version: 3, settings: { defaultTargets: { ...defaultTargets } }, payMonths: [], recurringExpenses: [] }; }
+export function createEmptyVault(): BudgetVault { return { version: 3, settings: { defaultTargets: { ...defaultTargets } }, payMonths: [], recurringExpenses: [], creditCards: [] }; }
 export function dueDateForMonth(year: number, month: number, dueDay: number) {
   const lastDay = new Date(year, month + 1, 0).getDate();
   return localDateISO(new Date(year, month, Math.min(Math.max(1, dueDay), lastDay), 12));
@@ -88,7 +89,13 @@ export function totals(month: PayMonth | BudgetCycle | LegacyBudgetPeriod) {
   const income = "payPeriods" in month ? month.payPeriods.flatMap((period) => period.incomes).reduce((sum, item) => sum + item.amountCents, 0) : month.incomes.reduce((sum, item) => sum + item.amountCents, 0);
   const expenses = month.expenses.reduce((sum, item) => sum + item.amountCents, 0);
   const byBucket = (bucket: Bucket) => month.expenses.filter((item) => item.bucket === bucket).reduce((sum, item) => sum + item.amountCents, 0);
-  return { income, expenses, remaining: income - expenses, byBucket };
+  const targets = (Object.keys(bucketMeta) as Bucket[]).reduce((sum, bucket) => sum + Math.round(income * month.targetPercentages[bucket] / 100), 0);
+  // Category targets are rounded independently to whole cents. When their
+  // percentages add to 100%, use the rounded category total so a fully allocated pay-month does
+  // not display a phantom one-cent surplus or deficit.
+  const targetPercentage = (Object.keys(bucketMeta) as Bucket[]).reduce((sum, bucket) => sum + month.targetPercentages[bucket], 0);
+  const remaining = Math.abs(targetPercentage - 100) < 0.000001 ? targets - expenses : income - expenses;
+  return { income, expenses, remaining, byBucket };
 }
 export function cyclePayPeriod(cycle: BudgetCycle, date?: string) { return date ? cycle.payPeriods.findIndex((period) => date >= period.startDate && date <= period.endDate) + 1 || undefined : undefined; }
 
