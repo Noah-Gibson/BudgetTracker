@@ -347,6 +347,8 @@ button { touch-action: manipulation; }
   .expense-dialog .expense-form > .field:first-child, .expense-dialog .credit-card-choice, .expense-dialog .form-buttons { grid-column: 1 / -1; }
   .expense-dialog .expense-details { display: contents; }
   .expense-dialog .expense-details { column-gap: .8rem; }
+  .expense-dialog .expense-details > .field:first-child { position: relative; }
+  .expense-dialog .remaining-balance-choice { position: absolute; top: calc(100% + .8rem); left: 0; width: 100%; }
   .expense-dialog .date-input-with-clear { align-items: center; }
   .expense-dialog .native-input[type="date"] { block-size: 2.6rem; min-block-size: 2.6rem; max-block-size: 2.6rem; }
   .expense-dialog .remaining-balance-choice, .expense-dialog .recurring-choice { padding-block: .1rem; align-self: start; }
