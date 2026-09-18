@@ -327,6 +327,7 @@ button { touch-action: manipulation; }
 .compact-dialog { width: min(460px, calc(100vw - 2rem)); }
 .compact-dialog p { color: var(--muted); line-height: 1.5; }
 .compact-dialog .native-input { display: block; margin-top: .35rem; }
+.compact-dialog .pay-month-start-input { inline-size: min(100%, 15rem); }
 .compact-dialog .date-input-with-clear .native-input { margin-top: 0; }
 .dialog-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.25rem; }
 
