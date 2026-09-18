@@ -403,6 +403,13 @@ button { touch-action: manipulation; }
     align-items: center;
     block-size: 100%;
   }
+  /* The inner date value has its own layout box in iOS Safari. Center it as
+     well so the text stays aligned while this pay-month field is edited. */
+  .pay-month-date-field .native-input[type="date"]::-webkit-date-and-time-value {
+    display: flex;
+    align-items: center;
+    block-size: 100%;
+  }
 }
 
 /* Shared violet visual system. These rules intentionally sit after the
