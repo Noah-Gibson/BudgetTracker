@@ -475,6 +475,15 @@ body { transition: background-color .18s ease, color .18s ease; }
 .p-dialog .p-dialog-header-close:hover { background: var(--subtle-accent); color: var(--accent-hover); }
 .p-dialog .p-dialog-footer { background: var(--surface-raised); border-color: var(--line); }
 .p-dialog-mask { background: rgba(13, 10, 12, .62); backdrop-filter: blur(3px); }
+.app-confirm-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: 1rem;
+}
+.app-confirm-dialog .p-dialog-content { overflow: auto; }
+.app-confirm-dialog .p-confirm-dialog-message { color: var(--muted); line-height: 1.5; }
+.app-confirm-dialog .p-dialog-footer { display: flex; flex-wrap: wrap-reverse; gap: .55rem; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+.app-confirm-dialog .p-dialog-footer .p-button { flex: 1 1 10rem; justify-content: center; }
 
 .period-actions select, .period-actions input, .empty-state input, .recurring-form select, .native-input,
 .p-inputtext, .p-inputnumber-input, .p-inputnumber .p-inputtext, .p-dropdown, .p-inputtextarea {
@@ -536,4 +545,5 @@ body { transition: background-color .18s ease, color .18s ease; }
   .landing-theme-toggle { top: .9rem; right: .9rem; }
   .topbar-actions .theme-toggle { min-width: 2.15rem; padding-inline: .5rem; }
   .topbar-actions .theme-toggle span { display: none; }
+  .app-confirm-dialog { margin-bottom: max(1rem, env(safe-area-inset-bottom)); }
 }

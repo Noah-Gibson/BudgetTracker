@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { SessionProvider } from "next-auth/react";
 import { PrimeReactProvider } from "primereact/api";
 import { PwaProvider } from "@/components/pwa-provider";
+import { AppConfirmationDialog } from "@/components/confirmation-dialog";
 
 type Theme = "dark" | "light";
 type ThemeContextValue = { theme: Theme; toggleTheme: () => void };
@@ -57,5 +58,5 @@ export function useTheme() {
 }
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
-  return <PwaProvider><ThemeProvider><SessionProvider><PrimeReactProvider value={{ ripple: true }}>{children}</PrimeReactProvider></SessionProvider></ThemeProvider></PwaProvider>;
+  return <PwaProvider><ThemeProvider><SessionProvider><PrimeReactProvider value={{ ripple: true }}><AppConfirmationDialog />{children}</PrimeReactProvider></SessionProvider></ThemeProvider></PwaProvider>;
 }
