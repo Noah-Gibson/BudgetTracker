@@ -285,7 +285,8 @@ button { touch-action: manipulation; }
 .native-input:disabled { border-color: var(--line); background: var(--surface-muted); color: var(--muted); cursor: not-allowed; opacity: 1; }
 .native-input.p-invalid { border-color: var(--rose); }
 .expense-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: .55rem; row-gap: .8rem; }
-.expense-details > .field { min-width: 0; }
+.expense-details { align-items: start; }
+.expense-details > .field { min-width: 0; align-content: start; }
 .native-input[type="date"] { display: block; box-sizing: border-box; inline-size: 100%; max-inline-size: 100%; min-inline-size: 0; }
 .date-input-with-clear { display: flex; inline-size: 100%; min-inline-size: 0; gap: .35rem; }
 .date-input-with-clear .native-input[type="date"] { flex: 1 1 auto; min-inline-size: 0; }
@@ -446,6 +447,17 @@ body { transition: background-color .18s ease, color .18s ease; }
 .p-card .p-card-title, .p-dialog .p-dialog-header, .p-dialog .p-dialog-content { color: var(--ink); }
 .p-dialog .p-dialog-header, .p-dialog .p-dialog-content { background: var(--surface-raised); }
 .p-dialog .p-dialog-header { border-color: var(--line); }
+.p-dialog .p-dialog-header-icons { display: flex !important; margin-left: auto; }
+.p-dialog .p-dialog-header-close {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  cursor: pointer;
+}
+.p-dialog .p-dialog-header-close:hover { background: var(--subtle-accent); color: var(--accent-hover); }
 .p-dialog .p-dialog-footer { background: var(--surface-raised); border-color: var(--line); }
 .p-dialog-mask { background: rgba(13, 10, 12, .62); backdrop-filter: blur(3px); }
 
@@ -457,7 +469,7 @@ body { transition: background-color .18s ease, color .18s ease; }
 }
 .p-inputtext::placeholder, .p-inputnumber-input::placeholder, .native-input::placeholder { color: var(--muted); opacity: .8; }
 .native-input:disabled {
-  background: var(--surface-muted) !important;
+  background: var(--surface-raised) !important;
   border-color: var(--line) !important;
   color: var(--muted) !important;
   cursor: not-allowed;
