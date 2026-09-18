@@ -448,6 +448,13 @@ body { transition: background-color .18s ease, color .18s ease; }
   color: var(--ink) !important;
 }
 .p-inputtext::placeholder, .p-inputnumber-input::placeholder, .native-input::placeholder { color: var(--muted); opacity: .8; }
+.native-input:disabled {
+  background: var(--surface-muted) !important;
+  border-color: var(--line) !important;
+  color: var(--muted) !important;
+  cursor: not-allowed;
+  opacity: 1;
+}
 .p-inputtext:enabled:focus, .p-inputnumber-input:enabled:focus, .native-input:focus, .period-actions select:focus, .recurring-form select:focus {
   border-color: var(--accent) !important;
   box-shadow: 0 0 0 .2rem rgba(130, 84, 232, .2) !important;
