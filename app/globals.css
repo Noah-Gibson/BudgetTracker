@@ -339,6 +339,15 @@ button { touch-action: manipulation; }
   .income-form .form-buttons { grid-column: 1 / -1; }
 }
 
+@media (min-width: 640px) and (hover: hover) {
+  .compact-dialog { width: min(600px, calc(100vw - 3rem)); }
+  .expense-dialog { width: min(640px, calc(100vw - 3rem)); }
+  .expense-dialog .expense-details { column-gap: .8rem; }
+  .expense-dialog .date-input-with-clear { align-items: center; }
+  .expense-dialog .native-input[type="date"] { block-size: 2.6rem; min-block-size: 2.6rem; max-block-size: 2.6rem; }
+  .expense-dialog .remaining-balance-choice, .expense-dialog .recurring-choice { padding-block: .1rem; }
+}
+
 @media (min-width: 1080px) {
   .period-actions { grid-template-columns: minmax(12rem, 1fr) repeat(4, max-content); }
   .period-actions .p-button { width: auto; }
