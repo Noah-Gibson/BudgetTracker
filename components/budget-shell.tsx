@@ -653,7 +653,8 @@ function PayMonthBucketPanel({ bucket, vault, month, income, spent, onChange }: 
   const creditCards = vault.creditCards ?? []; const creditCard = creditCards.find((item) => item.id === creditCardId); const creditCardDate = creditCard ? dueDatesWithin(month.startDate, month.endDate, creditCard.dueDay)[0] ?? nextCreditCardPaymentDate(month.startDate, creditCard.dueDay) : undefined;
   const clear = () => { setName(""); setAmount(null); setDate(todayISO()); setRecurring(false); setCreditCardId(""); setScheduledMonthId(""); setUseRemainingBalance(false); setEditing(null); setConfirmationMode(false); setError(""); };
   const replaceMonth = (next: PayMonth, recurringExpenses = vault.recurringExpenses) => onChange({ ...vault, recurringExpenses, payMonths: vault.payMonths.map((item) => item.id === next.id ? next : item) });
-  const submit = (confirmedCardSchedule = false) => {
+  const submit = (event?: unknown) => {
+    const confirmedCardSchedule = event === true;
     if (!name.trim() || !amount || amount <= 0) { setError("Enter an expense name and a positive amount before saving."); return; }
     const expenseDate = creditCardId ? creditCardDate : date;
     if (creditCardId && !expenseDate) { setError("This card’s payment day does not fall within this pay-month. Choose another card or update its payment day."); return; }
