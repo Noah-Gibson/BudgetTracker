@@ -587,3 +587,7 @@ body { transition: background-color .18s ease, color .18s ease; }
   .topbar-actions .theme-toggle span { display: none; }
   .app-confirm-dialog { margin-bottom: max(1rem, env(safe-area-inset-bottom)); }
 }
+
+@media (hover: none), (pointer: coarse) {
+  .local-tooltip, .p-tooltip { display: none !important; }
+}
