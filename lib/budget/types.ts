@@ -76,6 +76,16 @@ export function clonePayMonth(previous: PayMonth | undefined, startDate: string,
   const expenses = recurringExpenses.flatMap((expense) => expense.active ? dueDatesWithin(startDate, endDate, expense.dueDay).map((date) => ({ id: newId(), name: expense.name, amountCents: expense.amountCents, date, bucket: expense.bucket, templateId: expense.id, amountConfirmed: false })) : []);
   return { id: newId(), startDate, endDate, targetPercentages: { ...targets }, incomes, expenses };
 }
+/** Add missing occurrences to already-created pay-months after the source month. */
+export function backfillRecurringExpense(payMonths: PayMonth[], sourceMonthStartDate: string, expenses: RecurringExpense[]) {
+  return payMonths.map((month) => {
+    if (month.startDate <= sourceMonthStartDate) return month;
+    const additions = expenses.flatMap((template) => template.active ? dueDatesWithin(month.startDate, month.endDate, template.dueDay)
+      .filter((date) => !month.expenses.some((entry) => entry.templateId === template.id && entry.date === date))
+      .map((date) => ({ id: newId(), name: template.name, amountCents: template.amountCents, date, bucket: template.bucket, templateId: template.id, amountConfirmed: false })) : []);
+    return additions.length ? { ...month, expenses: [...month.expenses, ...additions] } : month;
+  });
+}
 export function clonePeriod(previous: LegacyBudgetPeriod | undefined, startDate: string, targets: Record<Bucket, number>): LegacyBudgetPeriod {
   return { id: newId(), startDate, endDate: addDays(startDate, 13), targetPercentages: { ...targets }, incomes: previous?.incomes.map((income) => ({ ...income, id: newId(), date: undefined })) ?? [], expenses: previous?.expenses.filter((expense) => expense.recurring).map((expense) => ({ ...expense, id: newId(), date: undefined })) ?? [] };
 }

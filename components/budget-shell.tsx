@@ -14,7 +14,7 @@ import { InputText } from "primereact/inputtext";
 import { ProgressBar } from "primereact/progressbar";
 import { Toast } from "primereact/toast";
 import { requestConfirmation } from "@/components/confirmation-dialog";
-import { addDays, bucketMeta, clonePayMonth, clonePeriod, createEmptyVault, cyclePayPeriod, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, money, newId, todayISO, totals, upgradeVault, type BudgetVault, type Bucket, type CreditCardPayment, type ExpenseEntry, type IncomeEntry, type PayMonth, type BudgetCycle, type PayPeriod, type RecurringBill, type RecurringBillCandidate, type LegacyBudgetPeriod, type LegacyBudgetVault, type LegacyExpenseEntry, type V2BudgetVault } from "@/lib/budget/types";
+import { addDays, backfillRecurringExpense, bucketMeta, clonePayMonth, clonePeriod, createEmptyVault, cyclePayPeriod, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, money, newId, todayISO, totals, upgradeVault, type BudgetVault, type Bucket, type CreditCardPayment, type ExpenseEntry, type IncomeEntry, type PayMonth, type BudgetCycle, type PayPeriod, type RecurringBill, type RecurringBillCandidate, type LegacyBudgetPeriod, type LegacyBudgetVault, type LegacyExpenseEntry, type V2BudgetVault } from "@/lib/budget/types";
 import { budgetWorkbook, importBudgetWorkbook } from "@/lib/budget/spreadsheet";
 import { decryptVault, encryptVault, exportVaultKey, generateVaultKey, importVaultKey, randomBytes, recoveryKey, unwrapWithRecovery, wrapWithRecovery, type Envelope } from "@/lib/crypto/vault";
 import { beginDriveRecoveryAuthorization, checkDriveRecoveryBackup, clearDriveRecoveryAuthorization, loadDriveRecoveryBackup, prepareDriveRecoveryAuthorization, removeDriveRecoveryBackup, saveDriveRecoveryBackup, type DriveRecoveryPackage, type SpreadsheetBackupResult } from "@/lib/drive/recovery";
@@ -678,11 +678,12 @@ function PayMonthBucketPanel({ bucket, vault, month, income, spent, onChange }: 
     const entry: ExpenseEntry = { id: editing?.id ?? newId(), name: name.trim(), amountCents, bucket, ...(expenseDate ? { date: expenseDate } : {}), ...(creditCardId ? { creditCardId } : {}), ...(templateId ? { templateId } : {}), ...(templateId ? { amountConfirmed } : {}) };
     const templates = editing?.templateId && !recurring ? vault.recurringExpenses.filter((item) => item.id !== editing.templateId) : recurring ? [...vault.recurringExpenses.filter((item) => item.id !== templateId), { id: templateId!, name: entry.name, amountCents: entry.amountCents, bucket, dueDay: Number(expenseDate!.slice(8, 10)), active: true }] : vault.recurringExpenses;
     const updatedExpenseMonth = { ...expenseMonth, expenses: editing && expenseMonth.id === month.id ? expenseMonth.expenses.map((item) => item.id === editing.id ? entry : item) : [...expenseMonth.expenses, entry] };
-    onChange({ ...vault, recurringExpenses: templates, payMonths: vault.payMonths.map((item) => {
+    const payMonths = vault.payMonths.map((item) => {
       if (item.id === updatedExpenseMonth.id) return updatedExpenseMonth;
       if (editing && expenseMonth.id !== month.id && item.id === month.id) return { ...item, expenses: item.expenses.filter((item) => item.id !== editing.id) };
       return item;
-    }) });
+    });
+    onChange({ ...vault, recurringExpenses: templates, payMonths: recurring ? backfillRecurringExpense(payMonths, month.startDate, templates.filter((item) => item.id === templateId)) : payMonths });
     clear(); setOpen(false);
   };
   const deleteExpense = () => { if (!editing) return; const deleteOccurrence = (stopRecurring: boolean) => { const templates = stopRecurring && editing.templateId ? vault.recurringExpenses.filter((item) => item.id !== editing.templateId) : vault.recurringExpenses; replaceMonth({ ...month, expenses: month.expenses.filter((item) => item.id !== editing.id) }, templates); clear(); setOpen(false); }; requestConfirmation({ message: "Delete this expense occurrence? This cannot be undone.", header: "Delete expense?", acceptLabel: "Delete expense", accept: () => { if (editing.templateId) requestConfirmation({ message: "Would you also like to stop this expense from recurring in future pay-month budgets?", header: "Stop future recurring expense?", acceptLabel: "Stop future expenses", rejectLabel: "Keep future expenses", accept: () => deleteOccurrence(true), reject: () => deleteOccurrence(false) }); else deleteOccurrence(false); } }); };

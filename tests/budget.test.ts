@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, todayISO, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
+import { backfillRecurringExpense, clonePayMonth, createEmptyVault, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, todayISO, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
 describe("pay-month budgets", () => {
   it("uses the device's local calendar date for today", () => {
@@ -36,6 +36,19 @@ describe("pay-month budgets", () => {
     expect(next.expenses[0].amountConfirmed).toBe(false);
     expect(dueDateForMonth(2028, 1, 31)).toBe("2028-02-29");
     expect(dueDatesWithin("2026-02-12", "2026-03-11", 1)).toEqual(["2026-03-01"]);
+  });
+
+  it("backfills a newly recurring expense into existing future pay-months without duplicates", () => {
+    const vault = createEmptyVault();
+    const current = clonePayMonth(undefined, "2026-01-15", vault.settings.defaultTargets, []);
+    const future = clonePayMonth(current, "2026-02-12", vault.settings.defaultTargets, []);
+    const later = clonePayMonth(future, "2026-03-12", vault.settings.defaultTargets, []);
+    const rent = { id: "rent", name: "Rent", amountCents: 120000, bucket: "needs" as const, dueDay: 1, active: true };
+    const populated = backfillRecurringExpense([current, future, later], current.startDate, [rent]);
+    const repeated = backfillRecurringExpense(populated, current.startDate, [rent]);
+    expect(populated[0].expenses).toHaveLength(0);
+    expect(populated.slice(1).flatMap((month) => month.expenses.map((expense) => expense.date))).toEqual(["2026-03-01", "2026-04-01"]);
+    expect(repeated.slice(1).flatMap((month) => month.expenses)).toHaveLength(2);
   });
 
   it("groups expenses by date with current entries first and upcoming entries in due-date order", () => {
