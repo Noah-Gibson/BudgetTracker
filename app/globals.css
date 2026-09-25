@@ -311,6 +311,8 @@ button { touch-action: manipulation; }
 .expense-dialog .expense-form { margin-top: 0; }
 .new-expense-button { width: 100%; margin-top: 1.1rem; justify-content: center; }
 .expense-list-divider { display: block !important; margin-top: .25rem; padding: .85rem 0 .35rem !important; border-bottom: 0 !important; color: var(--muted); font-size: .75rem !important; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.expense-list-toggle { justify-content: center; padding: .55rem 0 0 !important; }
+.expense-list-toggle .p-button { font-size: .875rem; }
 .optional-label { color: var(--muted); font-size: .75rem; font-weight: 500; }
 .form-buttons { display: flex; flex-wrap: wrap; gap: .55rem; }
 .form-buttons .p-button-outlined:not(.p-button-danger) { border-color: transparent; background: transparent; }

@@ -737,10 +737,15 @@ function CreditCardPaymentsPanel({ vault, onChange }: { vault: BudgetVault; onCh
 
 function PayMonthEntryList({ entries, onEdit }: { entries: IncomeEntry[]; onEdit: (entry: IncomeEntry) => void }) { if (!entries.length) return <p className="empty-list">No entries yet.</p>; return <ul className="entry-list">{entries.map((item) => <li key={item.id}><div className="entry-details"><span>{item.name}</span>{item.date && <small>{displayDate(item.date)}</small>}</div><strong>{money(item.amountCents)}</strong><button type="button" className="manage-entry" aria-label={`Edit ${item.name}`} onClick={() => onEdit(item)}><i className="pi pi-pencil" /></button></li>)}</ul>; }
 function PayMonthExpenseList({ entries, creditCards, onEdit, onConfirm }: { entries: ExpenseEntry[]; creditCards: CreditCardPayment[]; onEdit: (entry: ExpenseEntry) => void; onConfirm: (entry: ExpenseEntry) => void }) {
+  const [showAll, setShowAll] = useState(false);
   if (!entries.length) return <p className="empty-list">No entries yet.</p>;
   const { current, future } = expenseListGroups(entries);
+  const visibleCurrent = showAll ? current : current.slice(0, 10);
+  const remainingSlots = Math.max(0, 10 - visibleCurrent.length);
+  const visibleFuture = showAll ? future : future.slice(0, remainingSlots);
+  const hiddenCount = entries.length - visibleCurrent.length - visibleFuture.length;
   const item = (entry: ExpenseEntry) => { const card = creditCards.find((item) => item.id === entry.creditCardId); return <li key={entry.id}><div className="entry-details"><span>{entry.name}{entry.templateId && <i className="pi pi-sync recurring active" title="Recurring monthly expense" />}{card && <i className="pi pi-credit-card credit-card-indicator" title={`Credit card: ${card.name}`} />}</span>{entry.date && <small>{displayDate(entry.date)}{card && ` · ${card.name}`}</small>}{entry.templateId && entry.amountConfirmed === false && <button type="button" className="confirm-amount" onClick={() => onConfirm(entry)}>Confirm amount</button>}</div><strong>{money(entry.amountCents)}</strong><button type="button" className="manage-entry" aria-label={`Edit ${entry.name}`} onClick={() => onEdit(entry)}><i className="pi pi-pencil" /></button></li>; };
-  return <ul className="entry-list">{current.map(item)}{future.length > 0 && <li className="expense-list-divider" aria-label="Future expenses"><span>Future expenses</span></li>}{future.map(item)}</ul>;
+  return <ul className="entry-list">{visibleCurrent.map(item)}{visibleFuture.length > 0 && <li className="expense-list-divider" aria-label="Future expenses"><span>Future expenses</span></li>}{visibleFuture.map(item)}{hiddenCount > 0 && <li className="expense-list-toggle"><Button text label={`Show more (${hiddenCount})`} aria-expanded={false} onClick={() => setShowAll(true)} /></li>}{showAll && entries.length > 10 && <li className="expense-list-toggle"><Button text label="Show less" aria-expanded={true} onClick={() => setShowAll(false)} /></li>}</ul>;
 }
 
 function LegacyBudgetBoard({ vault, onChange }: { vault: LegacyBudgetVault; onChange: (vault: LegacyBudgetVault) => void }) {
