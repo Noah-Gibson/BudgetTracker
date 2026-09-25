@@ -84,6 +84,16 @@ button { touch-action: manipulation; }
 .button-row { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
 
 .budget-board { width: min(100%, 1440px); margin: auto; padding: 1.25rem 1rem 3rem; }
+.settings-content { display: grid; gap: 1rem; }
+.appearance-settings { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; }
+.appearance-settings > div { display: flex; align-items: flex-start; gap: .7rem; }
+.appearance-settings i { color: var(--teal); font-size: 1.25rem; }
+.appearance-settings span { display: grid; gap: .15rem; }
+.appearance-settings small { color: var(--muted); line-height: 1.45; }
+.settings-dialog { width: min(94vw, 720px); }
+.settings-dialog .drive-backup-settings { box-sizing: border-box; width: 100%; margin: 0; }
+.settings-dialog .settings-content { margin-bottom: 1rem; }
+.settings-dialog .drive-backup-settings + .drive-backup-settings { margin-top: .5rem; }
 .period-toolbar { display: grid; gap: 1rem; margin-bottom: 1.25rem; }
 .period-toolbar h1 { margin: 0; font-size: clamp(1.75rem, 7vw, 2.8rem); }
 .pay-month-period-title { display: inline-flex; align-items: center; gap: .25rem; }
@@ -458,14 +468,29 @@ body { transition: background-color .18s ease, color .18s ease; }
 .brand > i { color: var(--accent); }
 .profile-fallback { background: var(--subtle-accent); color: var(--teal-dark); }
 .topbar-actions { align-items: center; gap: .4rem; }
+.local-tooltip-control { position: relative; display: inline-flex; }
+.local-tooltip-target { display: inline-flex; }
+.local-tooltip { position: absolute; z-index: 10; right: 0; visibility: hidden; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); color: var(--ink); font-size: .82rem; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s ease, visibility .15s ease; }
+.local-tooltip::before { position: absolute; right: .7rem; width: 0; height: 0; border-right: .35rem solid transparent; border-left: .35rem solid transparent; content: ""; }
+.local-tooltip-bottom .local-tooltip { top: calc(100% + .45rem); }
+.local-tooltip-bottom .local-tooltip::before { top: -.35rem; border-bottom: .35rem solid var(--surface-muted); }
+.local-tooltip-top .local-tooltip { bottom: calc(100% + .45rem); }
+.local-tooltip-top .local-tooltip::before { bottom: -.35rem; border-top: .35rem solid var(--surface-muted); }
+.local-tooltip-control:hover .local-tooltip, .local-tooltip-control:focus-within .local-tooltip { visibility: visible; opacity: 1; }
+.p-tooltip { border-radius: 8px; background: var(--surface-muted) !important; color: var(--ink) !important; }
+.p-tooltip .p-tooltip-text { padding: .45rem .65rem; background: var(--surface-muted) !important; color: var(--ink) !important; font-size: .82rem; font-weight: 700; white-space: nowrap; }
+.p-tooltip.p-tooltip-top .p-tooltip-arrow { border-top-color: var(--surface-muted) !important; }
+.p-tooltip.p-tooltip-bottom .p-tooltip-arrow { border-bottom-color: var(--surface-muted) !important; }
+.p-tooltip.p-tooltip-left .p-tooltip-arrow { border-left-color: var(--surface-muted) !important; }
+.p-tooltip.p-tooltip-right .p-tooltip-arrow { border-right-color: var(--surface-muted) !important; }
 
-.unlock-card, .drive-backup-settings, .security-settings, .data-tools, .p-card, .p-dialog, .p-overlaypanel, .p-toast-message {
+.unlock-card, .appearance-settings, .drive-backup-settings, .security-settings, .data-tools, .p-card, .p-dialog, .p-overlaypanel, .p-toast-message {
   background: var(--surface);
   border-color: var(--line);
   color: var(--ink);
 }
 .unlock-card { border-radius: 18px; }
-.p-card, .drive-backup-settings, .security-settings, .data-tools { box-shadow: 0 1px 0 rgba(255, 255, 255, .03); }
+.appearance-settings, .p-card, .drive-backup-settings, .security-settings, .data-tools { box-shadow: 0 1px 0 rgba(255, 255, 255, .03); }
 .p-card .p-card-title, .p-dialog .p-dialog-header, .p-dialog .p-dialog-content { color: var(--ink); }
 .p-dialog .p-dialog-header, .p-dialog .p-dialog-content { background: var(--surface-raised); }
 .p-dialog .p-dialog-header { border-color: var(--line); }
