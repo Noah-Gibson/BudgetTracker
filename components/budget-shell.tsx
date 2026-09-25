@@ -190,13 +190,6 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
     pendingSave.current = null; activeKey.current = null; activeEnvelope.current = null;
     setVault(null); setKey(null); setEnvelope(null); setNotice(message);
   }, []);
-  const lockAndForgetBrowser = useCallback((message = "Vault locked and this browser has been forgotten.") => {
-    localStorage.removeItem(DEVICE_KEY);
-    void forgetTrustedDeviceKey();
-    void clearVaultSnapshot();
-    lock(message);
-  }, [lock]);
-
   const fetchEnvelope = useCallback(async () => {
     const response = await fetch("/api/vault", { cache: "no-store" });
     if (!response.ok) throw new Error("Vault is not available. Verify your Google sign-in and try again.");
@@ -572,7 +565,7 @@ function VaultWorkspace({ email, image, onSignOut }: { email: string; image?: st
   const automaticallyUnlocking = Boolean(!browserReady || autoUnlocking || (rememberedDevice?.kind === "trusted-device" && !vault && !setup && !createdRecovery && !driveBackup && !attemptedRememberedUnlock.current));
 
   return <main className="app-shell"><Toast ref={toast} />
-    <header className="topbar"><div className="brand"><i className="pi pi-lock" /> <span>Cipher Budget</span></div><div className="signed-in-user">{image ? <img src={image} referrerPolicy="no-referrer" alt="" /> : <span className="profile-fallback" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span>}<span>{email}</span></div><div className="topbar-actions"><ThemeToggle /><Button text icon="pi pi-lock" label="Lock" onClick={() => lockAndForgetBrowser()} /><Button text icon="pi pi-sign-out" label="Sign out" onClick={onSignOut} /></div></header>
+    <header className="topbar"><div className="brand"><i className="pi pi-lock" /> <span>Cipher Budget</span></div><div className="signed-in-user">{image ? <img src={image} referrerPolicy="no-referrer" alt="" /> : <span className="profile-fallback" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span>}<span>{email}</span></div><div className="topbar-actions"><ThemeToggle /><Button text icon="pi pi-sign-out" label="Sign out" onClick={onSignOut} /></div></header>
     {automaticallyUnlocking && <section className="unlock-card"><i className="pi pi-spin pi-spinner unlock-icon" /><h1>Opening your private budget</h1><p>Unlocking this remembered personal browser…</p></section>}
     {!vault && !setup && !createdRecovery && !driveBackup && !automaticallyUnlocking && <section className="unlock-card">
       <i className="pi pi-shield unlock-icon" />
@@ -633,7 +626,7 @@ function PayMonthBoard({ vault, onChange }: { vault: BudgetVault; onChange: (vau
     <PayMonthIncomePanel month={month} onChange={updateMonth} />
     <CreditCardPaymentsPanel vault={vault} onChange={onChange} />
     <section className="data-tools"><div><i className="pi pi-file-excel" /><span><strong>Spreadsheet backup & import</strong><small>Exports are readable .xlsx files and are not encrypted. Import only a Cipher Budget workbook you trust; importing replaces this vault’s current budget data.</small></span></div><div className="data-tool-actions"><Button outlined label="Export spreadsheet" icon="pi pi-download" loading={transferBusy} onClick={() => void exportSpreadsheet()} /><Button outlined label="Import spreadsheet" icon="pi pi-upload" disabled={transferBusy} onClick={() => importInput.current?.click()} /><input ref={importInput} className="visually-hidden" type="file" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx" onChange={(event) => void importSpreadsheet(event)} /></div>{transferStatus && <p className="transfer-status" role="status">{transferStatus}</p>}</section>
-    <section className="security-settings"><div><i className="pi pi-shield" /><span><strong>Encrypted vault is unlocked</strong><small>Financial data is decrypted only in this browser until it locks.</small></span></div></section>
+    <section className="security-settings"><div><i className="pi pi-shield" /><span><strong>Encrypted vault is unlocked</strong><small>Financial data is decrypted only while this budget is open in this browser.</small></span></div></section>
     <Dialog visible={dialog === "edit"} modal closable showCloseIcon header="Edit pay-month budget" className="compact-dialog" onHide={() => setDialog(null)}><p>Changing the start date keeps this budget at 28 days.</p><label className="field-label" htmlFor="edit-pay-month-start">Budget start date</label><div className="pay-month-date-field"><div className="date-input-with-clear"><input className="native-input" id="edit-pay-month-start" type="date" value={editStart} onChange={(event) => setEditStart(event.target.value)} /></div></div><div className="dialog-actions form-buttons"><Button label="Save budget" icon="pi pi-check" onClick={() => { if (editStart) { updateMonth({ ...month, startDate: editStart, endDate: addDays(editStart, 27) }); setDialog(null); } }} /><Button text label="Cancel" onClick={() => setDialog(null)} /><Button outlined severity="danger" label="Delete budget" icon="pi pi-trash" onClick={deleteMonth} /></div></Dialog>
   </section>;
 }
