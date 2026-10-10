@@ -12,10 +12,12 @@ type ThemeContextValue = { theme: Theme; toggleTheme: () => void; setDarkTheme: 
 
 const THEME_STORAGE_KEY = "cipher-budget-theme";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+const THEME_COLORS: Record<Theme, string> = { dark: "#1a1718", light: "#fbf9f8", "pure-black": "#000000" };
 
 function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme === "light" ? "light" : "dark";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLORS[theme]);
 }
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {

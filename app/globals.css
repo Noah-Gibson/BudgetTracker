@@ -45,6 +45,8 @@
   color-scheme: dark;
 }
 
+[data-theme="pure-black"] .topbar { background: #000000; }
+
 * { box-sizing: border-box; }
 html, body { min-height: 100%; overflow-x: clip; }
 body { min-width: 320px; margin: 0; background: var(--paper); color: var(--ink); font-family: "DM Sans Variable", ui-sans-serif, system-ui, sans-serif; }
