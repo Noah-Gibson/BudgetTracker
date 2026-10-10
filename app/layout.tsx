@@ -19,8 +19,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false }
 };
 
-export const viewport: Viewport = { themeColor: "#1a1718", viewportFit: "cover" };
+export const viewport: Viewport = { themeColor: "#000000", viewportFit: "cover" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" data-theme="dark" suppressHydrationWarning><body><AppProviders>{children}</AppProviders><Analytics /><SpeedInsights /></body></html>;
+  return <html lang="en" data-theme="pure-black" suppressHydrationWarning><body><AppProviders>{children}</AppProviders><Analytics /><SpeedInsights /></body></html>;
 }

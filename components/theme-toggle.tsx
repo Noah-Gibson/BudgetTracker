@@ -22,8 +22,8 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     {isDarkMode && <label className="dark-theme-select">
       <span className="visually-hidden">Dark theme</span>
       <select value={theme} onChange={(event) => setDarkTheme(event.target.value as "dark" | "pure-black")} aria-label="Dark theme">
-        <option value="dark">Default</option>
         <option value="pure-black">Pure Black</option>
+        <option value="dark">Gray</option>
       </select>
     </label>}
   </div>;

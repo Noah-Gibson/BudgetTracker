@@ -21,7 +21,7 @@ function applyTheme(theme: Theme) {
 }
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>("pure-black");
 
   useEffect(() => {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -33,7 +33,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     const preference = window.matchMedia("(prefers-color-scheme: light)");
     const syncSystemTheme = () => {
-      const nextTheme: Theme = preference.matches ? "light" : "dark";
+      const nextTheme: Theme = preference.matches ? "light" : "pure-black";
       setTheme(nextTheme);
       applyTheme(nextTheme);
     };
@@ -44,7 +44,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const toggleTheme = useCallback(() => {
     setTheme((current) => {
-      const next: Theme = current === "light" ? "dark" : "light";
+      const next: Theme = current === "light" ? "pure-black" : "light";
       window.localStorage.setItem(THEME_STORAGE_KEY, next);
       applyTheme(next);
       return next;
