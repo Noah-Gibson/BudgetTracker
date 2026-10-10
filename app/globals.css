@@ -30,6 +30,21 @@
   color-scheme: light;
 }
 
+[data-theme="pure-black"] {
+  --ink: #f5eff1; --muted: #b8adb2; --paper: #000000; --surface: #000000;
+  --surface-raised: #000000; --surface-muted: #101010; --line: #343034;
+  --accent: #8254e8; --accent-hover: #9b79f2; --accent-contrast: #ffffff;
+  --category-needs: #2dd4bf; --category-goals: #60a5fa; --category-wants: #fbbf24;
+  --teal: var(--accent); --teal-dark: #c4b5fd; --gold: #c084fc; --rose: #fb7185;
+  --danger-bg: #3b1d28; --danger-ink: #fecdd3; --subtle-accent: #2f2441;
+  --shadow: 0 18px 48px rgba(0, 0, 0, .45);
+  --surface-ground: var(--paper); --surface-section: var(--paper); --surface-card: var(--surface);
+  --surface-overlay: var(--surface-raised); --surface-border: var(--line); --surface-hover: var(--surface-muted);
+  --text-color: var(--ink); --text-color-secondary: var(--muted); --highlight-bg: var(--subtle-accent);
+  --highlight-text-color: var(--ink); --focus-ring: 0 0 0 .22rem rgba(130, 84, 232, .35);
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
 html, body { min-height: 100%; overflow-x: clip; }
 body { min-width: 320px; margin: 0; background: var(--paper); color: var(--ink); font-family: "DM Sans Variable", ui-sans-serif, system-ui, sans-serif; }
@@ -463,6 +478,10 @@ body { transition: background-color .18s ease, color .18s ease; }
   transition: border-color .18s ease, background-color .18s ease, color .18s ease;
 }
 .theme-toggle:hover { border-color: var(--accent); background: var(--subtle-accent); color: var(--accent-hover); }
+.theme-controls { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
+.dark-theme-select { display: inline-flex; }
+.dark-theme-select select { min-height: 2.25rem; padding: .42rem 2rem .42rem .7rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: .82rem; font-weight: 700; line-height: 1; cursor: pointer; }
+.dark-theme-select select:hover { border-color: var(--accent); }
 .theme-toggle:focus-visible, button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(130, 84, 232, .55); outline-offset: 2px; }
 .landing-theme-toggle { position: absolute; top: 1.25rem; right: 1.25rem; z-index: 1; }
 

@@ -6,15 +6,16 @@ import { PrimeReactProvider } from "primereact/api";
 import { PwaProvider } from "@/components/pwa-provider";
 import { AppConfirmationDialog } from "@/components/confirmation-dialog";
 
-type Theme = "dark" | "light";
-type ThemeContextValue = { theme: Theme; toggleTheme: () => void };
+type Theme = "dark" | "light" | "pure-black";
+type DarkTheme = Exclude<Theme, "light">;
+type ThemeContextValue = { theme: Theme; toggleTheme: () => void; setDarkTheme: (theme: DarkTheme) => void };
 
 const THEME_STORAGE_KEY = "cipher-budget-theme";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
+  document.documentElement.style.colorScheme = theme === "light" ? "light" : "dark";
 }
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -22,7 +23,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === "dark" || stored === "light") {
+    if (stored === "dark" || stored === "light" || stored === "pure-black") {
       setTheme(stored);
       applyTheme(stored);
       return;
@@ -41,14 +42,20 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const toggleTheme = useCallback(() => {
     setTheme((current) => {
-      const next = current === "dark" ? "light" : "dark";
+      const next: Theme = current === "light" ? "dark" : "light";
       window.localStorage.setItem(THEME_STORAGE_KEY, next);
       applyTheme(next);
       return next;
     });
   }, []);
 
-  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
+  const setDarkTheme = useCallback((next: DarkTheme) => {
+    setTheme(next);
+    window.localStorage.setItem(THEME_STORAGE_KEY, next);
+    applyTheme(next);
+  }, []);
+
+  return <ThemeContext.Provider value={{ theme, toggleTheme, setDarkTheme }}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {
