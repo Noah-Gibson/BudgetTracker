@@ -133,6 +133,20 @@ button { touch-action: manipulation; }
 .credit-card-panel { margin-top: .8rem; }
 .credit-card-form { grid-template-columns: minmax(0, 1fr); }
 .credit-card-indicator { margin-inline: .45rem; color: var(--teal); font-size: .8em; }
+.credit-card-list { display: grid; gap: .35rem; margin-top: .9rem; }
+.credit-card-list-label { color: var(--muted); font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.credit-card-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .55rem; width: 100%; padding: .65rem .7rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--ink); text-align: left; cursor: pointer; }
+.credit-card-row:hover { background: var(--subtle-accent); border-color: var(--teal); }
+.credit-card-row > span { display: flex; min-width: 0; align-items: center; gap: .5rem; }
+.credit-card-row > span > span { display: grid; min-width: 0; gap: .1rem; }
+.credit-card-row small { overflow: hidden; color: var(--muted); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
+.credit-card-row strong { white-space: nowrap; color: var(--teal-dark); }
+.credit-card-row > .pi-angle-right { color: var(--muted); }
+.credit-card-expense-total { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-top: .9rem; padding: .75rem .85rem; border-radius: 8px; background: var(--subtle-accent); }
+.credit-card-expense-total span { color: var(--muted); font-size: .84rem; }
+.credit-card-expense-total strong { color: var(--teal-dark); font-size: 1.15rem; }
+.credit-card-expense-list { margin-top: .7rem; }
+.credit-card-expense-list li { grid-template-columns: minmax(0, 1fr) auto; }
 .income-panel-compact .p-card-body { padding: .8rem 1rem; }
 .income-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .income-summary > div { display: grid; min-width: 0; gap: .1rem; }

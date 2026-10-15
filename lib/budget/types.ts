@@ -56,6 +56,15 @@ export function futureExpenseTotal(entries: Array<{ amountCents: number; date?: 
   return entries.reduce((total, entry) => total + (entry.date && entry.date > today ? entry.amountCents : 0), 0);
 }
 
+/** Expenses assigned to a card within one pay-month. */
+export function creditCardExpenses(month: PayMonth, creditCardId: string) {
+  return month.expenses.filter((expense) => expense.creditCardId === creditCardId);
+}
+
+export function creditCardExpenseTotal(month: PayMonth, creditCardId: string) {
+  return creditCardExpenses(month, creditCardId).reduce((total, expense) => total + expense.amountCents, 0);
+}
+
 export function addDays(start: string, days: number) { const d = new Date(`${start}T12:00:00`); d.setDate(d.getDate() + days); return localDateISO(d); }
 export function createEmptyVault(): BudgetVault { return { version: 3, settings: { defaultTargets: { ...defaultTargets } }, payMonths: [], recurringExpenses: [], creditCards: [] }; }
 export function dueDateForMonth(year: number, month: number, dueDay: number) {
