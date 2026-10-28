@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   description: "A private, encrypted biweekly budget planner",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Cipher Budget", statusBarStyle: "black-translucent" },
-  icons: { apple: "/apple-icon" },
+  icons: { apple: "/apple-icon.png" },
   robots: { index: false, follow: false }
 };
 
