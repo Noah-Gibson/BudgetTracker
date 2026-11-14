@@ -593,7 +593,8 @@ body { transition: background-color .18s ease, color .18s ease; }
 .p-button.p-button-danger, .p-button.p-button-danger.p-button-outlined { color: var(--rose); }
 .p-button.p-button-danger:not(.p-button-outlined):not(.p-button-text) { background: var(--rose); border-color: var(--rose); color: #fff; }
 .p-checkbox .p-checkbox-box { background: var(--surface-raised); border-color: var(--line); }
-.p-checkbox .p-checkbox-box.p-highlight { background: var(--accent); border-color: var(--accent); }
+.p-checkbox.p-highlight .p-checkbox-box { background: var(--accent); border-color: var(--accent); }
+.p-checkbox.p-highlight .p-checkbox-box .p-checkbox-icon { color: var(--accent-contrast); }
 
 .summary-card i { background: var(--subtle-accent); color: var(--accent); }
 .summary-card.positive strong, .recurring.active { color: var(--teal-dark); }
