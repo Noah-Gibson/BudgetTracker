@@ -131,7 +131,7 @@ button { touch-action: manipulation; }
 .summary-card.positive strong { color: var(--teal-dark); }
 .income-panel { margin-top: .8rem; }
 .expense-search { display: grid; gap: .32rem; margin-bottom: .8rem; }
-.expense-search > label { color: var(--muted); font-size: .78rem; font-weight: 700; }
+.expense-search > label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .expense-search > div { position: relative; display: flex; align-items: center; max-width: 30rem; }
 .expense-search > div > .pi-search { position: absolute; z-index: 1; left: .75rem; color: var(--muted); font-size: .85rem; pointer-events: none; }
 .expense-search .p-inputtext { width: 100%; padding-left: 2.2rem; }
