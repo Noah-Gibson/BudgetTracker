@@ -221,7 +221,7 @@ function VaultWorkspace({ email, image, onSignOut, page }: { email: string; imag
       if (!remote) { setSetup(true); return; }
       const unlocked = await unlockTrustedDevice(device);
       const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document); activeKey.current = unlocked; activeEnvelope.current = remote;
-      if (document.version !== 3) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
+      if (document.version !== 3 || decrypted !== document) void save(decrypted).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
       setKey(unlocked); setEnvelope(remote); setVault(decrypted);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to unlock the vault."); } finally { setBusy(false); }
   };
@@ -288,7 +288,7 @@ function VaultWorkspace({ email, image, onSignOut, page }: { email: string; imag
       const document = await decryptVault(remote, unlocked); const { vault: decrypted } = upgradeVault(document);
       const openedVault = expectedVaultId === remote.vaultId && decrypted.recoveryProvider !== "google-drive" ? { ...decrypted, recoveryProvider: "google-drive" as const } : decrypted;
       activeKey.current = unlocked; activeEnvelope.current = remote;
-      if (document.version !== 3 || openedVault !== decrypted) void save(openedVault).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
+      if (document.version !== 3 || decrypted !== document || openedVault !== decrypted) void save(openedVault).catch((error) => setNotice(error instanceof Error ? error.message : "Could not secure the upgraded vault."));
       // A Drive restore has just proved both that its package belongs to this
       // vault and that its recovery secret unwraps the current vault key.
       // Preserve that verified status for the unlocked workspace; otherwise a
@@ -709,7 +709,7 @@ function PayMonthBucketPanel({ bucket, vault, month, income, spent, onChange }: 
     const amountCents = Math.round(amount * 100);
     const amountConfirmed = confirmationMode || (editing ? editing.amountConfirmed !== false || editing.amountCents !== amountCents : true);
     const entry: ExpenseEntry = { id: editing?.id ?? newId(), name: name.trim(), amountCents, bucket, ...(expenseDate ? { date: expenseDate } : {}), ...(creditCardId ? { creditCardId } : {}), ...(templateId ? { templateId } : {}), ...(templateId ? { amountConfirmed } : {}) };
-    const templates = editing?.templateId && !recurring ? vault.recurringExpenses.filter((item) => item.id !== editing.templateId) : recurring ? [...vault.recurringExpenses.filter((item) => item.id !== templateId), { id: templateId!, name: entry.name, amountCents: entry.amountCents, bucket, dueDay: Number(expenseDate!.slice(8, 10)), active: true, ...(creditCardId ? { creditCardId } : {}) }] : vault.recurringExpenses;
+    const templates = editing?.templateId && !recurring ? vault.recurringExpenses.filter((item) => item.id !== editing.templateId) : recurring ? [...vault.recurringExpenses.filter((item) => item.id !== templateId), { id: templateId!, name: entry.name, amountCents: entry.amountCents, bucket, dueDay: Number(expenseDate!.slice(8, 10)), active: true, creditCardId: creditCardId || null }] : vault.recurringExpenses;
     const updatedExpenseMonth = { ...expenseMonth, expenses: editing && expenseMonth.id === month.id ? expenseMonth.expenses.map((item) => item.id === editing.id ? entry : item) : [...expenseMonth.expenses, entry] };
     const payMonths = vault.payMonths.map((item) => {
       if (item.id === updatedExpenseMonth.id) return updatedExpenseMonth;

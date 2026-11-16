@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backfillRecurringExpense, clonePayMonth, createEmptyVault, creditCardExpenseTotal, creditCardExpenses, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, searchExpenses, todayISO, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
+import { backfillRecurringExpense, clonePayMonth, createEmptyVault, creditCardExpenseTotal, creditCardExpenses, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, searchExpenses, todayISO, totals, upgradeVault, type BudgetVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
 describe("pay-month budgets", () => {
   it("uses the device's local calendar date for today", () => {
@@ -61,6 +61,34 @@ describe("pay-month budgets", () => {
 
     expect(next.expenses[0]).toMatchObject({ templateId: "card-payment", creditCardId: "travel-visa" });
     expect(backfilled.slice(1).flatMap((month) => month.expenses).every((expense) => expense.creditCardId === "travel-visa")).toBe(true);
+  });
+
+  it("repairs legacy recurring card links before autofilling the next pay-month", () => {
+    const vault: BudgetVault = {
+      ...createEmptyVault(),
+      recurringExpenses: [{ id: "card-payment", name: "Travel Visa", amountCents: 12500, bucket: "needs", dueDay: 15, active: true }],
+      payMonths: [
+        { id: "first", startDate: "2026-01-15", endDate: "2026-02-11", targetPercentages: { needs: 50, goals: 30, wants: 20 }, incomes: [], expenses: [{ id: "first-payment", name: "Travel Visa", amountCents: 12500, bucket: "needs", date: "2026-01-15", templateId: "card-payment", creditCardId: "travel-visa" }] },
+        { id: "second", startDate: "2026-02-12", endDate: "2026-03-11", targetPercentages: { needs: 50, goals: 30, wants: 20 }, incomes: [], expenses: [{ id: "second-payment", name: "Travel Visa", amountCents: 12500, bucket: "needs", date: "2026-02-15", templateId: "card-payment" }] },
+      ],
+    };
+
+    const repaired = upgradeVault(vault).vault;
+    const next = clonePayMonth(repaired.payMonths[1], "2026-03-12", repaired.settings.defaultTargets, repaired.recurringExpenses);
+
+    expect(repaired.recurringExpenses[0].creditCardId).toBe("travel-visa");
+    expect(repaired.payMonths[1].expenses[0].creditCardId).toBe("travel-visa");
+    expect(next.expenses[0].creditCardId).toBe("travel-visa");
+  });
+
+  it("does not restore a card link explicitly removed from a recurring template", () => {
+    const vault: BudgetVault = {
+      ...createEmptyVault(),
+      recurringExpenses: [{ id: "card-payment", name: "Travel Visa", amountCents: 12500, bucket: "needs", dueDay: 15, active: true, creditCardId: null }],
+      payMonths: [{ id: "first", startDate: "2026-01-15", endDate: "2026-02-11", targetPercentages: { needs: 50, goals: 30, wants: 20 }, incomes: [], expenses: [{ id: "first-payment", name: "Travel Visa", amountCents: 12500, bucket: "needs", date: "2026-01-15", templateId: "card-payment", creditCardId: "travel-visa" }] }],
+    };
+
+    expect(upgradeVault(vault).vault).toBe(vault);
   });
 
   it("groups expenses by date with current entries first and upcoming entries in due-date order", () => {

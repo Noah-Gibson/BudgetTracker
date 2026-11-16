@@ -4,7 +4,7 @@ export type IncomeEntry = { id: string; name: string; amountCents: number; date?
 export type CreditCardPayment = { id: string; name: string; dueDay: number };
 export type ExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; templateId?: string; amountConfirmed?: boolean; creditCardId?: string };
 /** Stored in the encrypted vault; it intentionally has no dedicated UI panel. */
-export type RecurringExpense = { id: string; name: string; amountCents: number; bucket: Bucket; dueDay: number; active: boolean; creditCardId?: string };
+export type RecurringExpense = { id: string; name: string; amountCents: number; bucket: Bucket; dueDay: number; active: boolean; creditCardId?: string | null };
 export type PayMonth = { id: string; startDate: string; endDate: string; targetPercentages: Record<Bucket, number>; incomes: IncomeEntry[]; expenses: ExpenseEntry[] };
 export type SpreadsheetBackupSettings = { enabled: boolean; folderId?: string; lastSuccessfulDate?: string; lastBackupFileId?: string; lastBackupAt?: string };
 // This is encrypted alongside the budget. It is a recovery-method label only;
@@ -101,6 +101,53 @@ export function backfillRecurringExpense(payMonths: PayMonth[], sourceMonthStart
     return additions.length ? { ...month, expenses: [...month.expenses, ...additions] } : month;
   });
 }
+/** Restores card links omitted from recurring templates before card support was added. */
+export function repairRecurringCreditCardLinks(vault: BudgetVault): BudgetVault {
+  const templates = new Map(vault.recurringExpenses.map((template) => [template.id, template]));
+  const legacyCardByTemplate = new Map<string, string>();
+  let payMonthsChanged = false;
+  const repairedById = new Map<string, PayMonth>();
+
+  [...vault.payMonths]
+    .sort((left, right) => left.startDate.localeCompare(right.startDate))
+    .forEach((month) => {
+      let monthChanged = false;
+      const expenses = month.expenses.map((entry) => {
+        const template = entry.templateId ? templates.get(entry.templateId) : undefined;
+        if (!template || template.creditCardId !== undefined) return entry;
+        if (entry.creditCardId) {
+          legacyCardByTemplate.set(template.id, entry.creditCardId);
+          return entry;
+        }
+        const creditCardId = legacyCardByTemplate.get(template.id);
+        if (!creditCardId) return entry;
+        monthChanged = true;
+        return { ...entry, creditCardId };
+      });
+      if (monthChanged) {
+        payMonthsChanged = true;
+        repairedById.set(month.id, { ...month, expenses });
+      }
+    });
+
+  let templatesChanged = false;
+  const recurringExpenses = vault.recurringExpenses.map((template) => {
+    const creditCardId = template.creditCardId === undefined
+      ? legacyCardByTemplate.get(template.id)
+      : undefined;
+    if (!creditCardId) return template;
+    templatesChanged = true;
+    return { ...template, creditCardId };
+  });
+  if (!payMonthsChanged && !templatesChanged) return vault;
+  return {
+    ...vault,
+    recurringExpenses,
+    payMonths: payMonthsChanged
+      ? vault.payMonths.map((month) => repairedById.get(month.id) ?? month)
+      : vault.payMonths,
+  };
+}
 export function clonePeriod(previous: LegacyBudgetPeriod | undefined, startDate: string, targets: Record<Bucket, number>): LegacyBudgetPeriod {
   return { id: newId(), startDate, endDate: addDays(startDate, 13), targetPercentages: { ...targets }, incomes: previous?.incomes.map((income) => ({ ...income, id: newId(), date: undefined })) ?? [], expenses: previous?.expenses.filter((expense) => expense.recurring).map((expense) => ({ ...expense, id: newId(), date: undefined })) ?? [] };
 }
@@ -137,7 +184,7 @@ function normalizeLegacyPeriods(document: LegacyBudgetVault): PayMonth[] {
 }
 
 export function upgradeVault(document: VaultDocument): { vault: BudgetVault } {
-  if (document.version === 3) return { vault: document };
+  if (document.version === 3) return { vault: repairRecurringCreditCardLinks(document) };
   if (document.version === 2) return { vault: {
     version: 3,
     settings: document.settings,
