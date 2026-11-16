@@ -248,7 +248,7 @@ function PlanComparison({
                 }}
               />
               <span
-                className="planned"
+                className={`planned ${categoryClass[category.bucket]}`}
                 style={{
                   width: `${goalPercent}%`,
                 }}
@@ -450,7 +450,8 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
           >
             <p className="insight-card-copy">
               Your spending makeup compared with your latest category goals.
-              Solid bars show the percent you spent; the marker shows your goal.
+              Solid bars show the percent you spent; lighter bars and their
+              dashed edge show your goal.
             </p>
             <PlanComparison
               {...data}
