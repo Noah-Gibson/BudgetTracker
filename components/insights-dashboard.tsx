@@ -271,7 +271,10 @@ function PlanComparison({
       {categories.map((category) => {
         const goalPercent = targetPercentages[category.bucket];
         const savingsCents = category.savingsCents;
-        const isOverBudget = category.allocatedCents > category.plannedCents;
+        const isPositiveCategory = category.bucket === "goals";
+        const exceedsPlan = category.allocatedCents > category.plannedCents;
+        const isBelowPlan = category.allocatedCents < category.plannedCents;
+        const isUnfavorable = isPositiveCategory ? isBelowPlan : exceedsPlan;
         const displayedCents = Math.max(category.plannedCents, category.allocatedCents);
         const budgetWidth = displayedCents
           ? (category.plannedCents / displayedCents) * 100
@@ -288,6 +291,9 @@ function PlanComparison({
         const savingsWidth = displayedCents
           ? (savingsWithinBudget / displayedCents) * 100
           : 0;
+        const allocationWidth = displayedCents
+          ? (Math.min(category.allocatedCents, category.plannedCents) / displayedCents) * 100
+          : 0;
         return (
           <div className="insight-plan-row" key={category.bucket}>
             <div className="insight-plan-heading">
@@ -297,14 +303,14 @@ function PlanComparison({
                 />
                 {bucketMeta[category.bucket].label}
               </span>
-              <strong className={isOverBudget ? "over" : ""}>
+              <strong className={isUnfavorable ? "over" : ""}>
                 {money(savingsCents ? category.allocatedCents : category.actualCents)} {savingsCents ? "expenses + savings" : "expenses"}
               </strong>
               <small className="insight-plan-goal">{category.sharePercent.toFixed(0)}% {savingsCents ? "expenses + savings" : "expenses"} · Goal {goalPercent.toFixed(0)}%</small>
             </div>
             <div
               className="insight-plan-bars"
-              aria-label={`${bucketMeta[category.bucket].label}: ${money(category.actualCents)} expenses against a ${money(category.plannedCents)} budget${savingsCents ? `, with ${money(savingsCents)} allocated as savings` : ""}`}
+              aria-label={`${bucketMeta[category.bucket].label}: ${money(category.actualCents)} expenses against a ${money(category.plannedCents)} ${isPositiveCategory ? "goal" : "budget"}${savingsCents ? `, with ${money(savingsCents)} allocated as savings` : ""}`}
             >
               <span
                 className={`actual ${categoryClass[category.bucket]}`}
@@ -319,15 +325,16 @@ function PlanComparison({
                 }}
               />
               {savingsCents > 0 && <span className="assumed-savings" style={{ left: `${expenseWidth}%`, width: `${savingsWidth}%` }} />}
-              {isOverBudget && <>
-                <span className="over-budget" style={{ left: `${budgetWidth}%`, width: `${100 - budgetWidth}%` }} />
+              {isPositiveCategory && isBelowPlan && <span className="goal-shortfall" style={{ left: `${allocationWidth}%`, width: `${budgetWidth - allocationWidth}%` }} />}
+              {exceedsPlan && <>
+                <span className={isPositiveCategory ? "goal-excess" : "over-budget"} style={{ left: `${budgetWidth}%`, width: `${100 - budgetWidth}%` }} />
                 <span className="planned-marker" style={{ left: `${budgetWidth}%` }} aria-hidden="true" />
               </>}
             </div>
             <small>
               <b>Expenses {money(category.actualCents)}</b>
               {category.bucket === "goals" && <span>Savings {money(savingsCents)}</span>}
-              <span>Budget {money(category.plannedCents)}</span>
+              <span>{isPositiveCategory ? "Goal" : "Budget"} {money(category.plannedCents)}</span>
             </small>
           </div>
         );
