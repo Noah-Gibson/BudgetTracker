@@ -1,4 +1,4 @@
-import { bucketMeta, type Bucket, type PayMonth } from "@/lib/budget/types";
+import { bucketMeta, todayISO, type Bucket, type PayMonth } from "@/lib/budget/types";
 
 export const insightBuckets = Object.keys(bucketMeta) as Bucket[];
 
@@ -7,6 +7,8 @@ export type InsightRange = "all" | "last-3" | "last-6" | { startId: string; endI
 export type InsightCategory = {
   bucket: Bucket;
   actualCents: number;
+  savingsCents: number;
+  allocatedCents: number;
   plannedCents: number;
   varianceCents: number;
   sharePercent: number;
@@ -19,6 +21,7 @@ export type InsightPeriod = {
   incomeCents: number;
   budgetCents: number;
   expenseCents: number;
+  savingsCents: number;
   categoryCents: Record<Bucket, number>;
 };
 
@@ -42,31 +45,37 @@ export function selectInsightPayMonths(payMonths: PayMonth[], range: InsightRang
   return sorted.slice(Math.min(firstIndex, lastIndex), Math.max(firstIndex, lastIndex) + 1);
 }
 
-export function calculateInsights(payMonths: PayMonth[]) {
+export function calculateInsights(payMonths: PayMonth[], today = todayISO()) {
   const periods: InsightPeriod[] = sortPayMonths(payMonths).map((month) => {
     const categoryCents = centsByBucket(month);
     const incomeCents = month.incomes.reduce((sum, income) => sum + income.amountCents, 0);
     const budgetCents = insightBuckets.reduce((sum, bucket) => sum + Math.round(incomeCents * month.targetPercentages[bucket] / 100), 0);
+    const expenseCents = month.expenses.reduce((sum, expense) => sum + expense.amountCents, 0);
     return {
       id: month.id,
       startDate: month.startDate,
       endDate: month.endDate,
       incomeCents,
       budgetCents,
-      expenseCents: month.expenses.reduce((sum, expense) => sum + expense.amountCents, 0),
+      expenseCents,
+      savingsCents: month.endDate < today ? Math.max(0, budgetCents - expenseCents) : 0,
       categoryCents
     };
   });
   const incomeCents = periods.reduce((sum, period) => sum + period.incomeCents, 0);
   const expenseCents = periods.reduce((sum, period) => sum + period.expenseCents, 0);
+  const savingsCents = periods.reduce((sum, period) => sum + period.savingsCents, 0);
+  const allocatedCents = expenseCents + savingsCents;
   const categories: InsightCategory[] = insightBuckets.map((bucket) => {
     const actualCents = periods.reduce((sum, period) => sum + period.categoryCents[bucket], 0);
+    const categorySavingsCents = bucket === "goals" ? savingsCents : 0;
+    const categoryAllocatedCents = actualCents + categorySavingsCents;
     const plannedCents = sortPayMonths(payMonths).reduce((sum, month) => sum + Math.round(month.incomes.reduce((income, entry) => income + entry.amountCents, 0) * month.targetPercentages[bucket] / 100), 0);
-    return { bucket, actualCents, plannedCents, varianceCents: actualCents - plannedCents, sharePercent: expenseCents ? actualCents / expenseCents * 100 : 0 };
+    return { bucket, actualCents, savingsCents: categorySavingsCents, allocatedCents: categoryAllocatedCents, plannedCents, varianceCents: categoryAllocatedCents - plannedCents, sharePercent: allocatedCents ? categoryAllocatedCents / allocatedCents * 100 : 0 };
   });
   const changes = periods.slice(1).map((period, index) => ({ from: periods[index], to: period, changeCents: period.expenseCents - periods[index].expenseCents }));
   const largestChange = changes.length ? changes.reduce((largest, change) => Math.abs(change.changeCents) > Math.abs(largest.changeCents) ? change : largest) : undefined;
-  const highestSpend = [...categories].sort((left, right) => right.actualCents - left.actualCents)[0];
+  const highestSpend = [...categories].sort((left, right) => right.allocatedCents - left.allocatedCents)[0];
   const furthestFromPlan = [...categories].sort((left, right) => Math.abs(right.varianceCents) - Math.abs(left.varianceCents))[0];
 
   return {
@@ -74,6 +83,7 @@ export function calculateInsights(payMonths: PayMonth[]) {
     categories,
     incomeCents,
     expenseCents,
+    savingsCents,
     leftCents: incomeCents - expenseCents,
     averageExpenseCents: periods.length ? Math.round(expenseCents / periods.length) : 0,
     highestSpend,

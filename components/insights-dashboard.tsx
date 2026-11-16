@@ -218,13 +218,13 @@ function PlanComparison({
 }: ReturnType<typeof calculateInsights> & {
   targetPercentages: Record<Bucket, number>;
 }) {
-  const maximum = Math.max(...categories.flatMap((category) => [category.actualCents, category.plannedCents]), 0);
+  const maximum = Math.max(...categories.flatMap((category) => [category.allocatedCents, category.plannedCents]), 0);
   return (
     <div className="insight-plan-list">
       {categories.map((category) => {
         const goalPercent = targetPercentages[category.bucket];
-        const savingsCents = category.bucket === "goals" ? Math.max(0, category.plannedCents - category.actualCents) : 0;
-        const isOverBudget = category.actualCents > category.plannedCents;
+        const savingsCents = category.savingsCents;
+        const isOverBudget = category.allocatedCents > category.plannedCents;
         return (
           <div className="insight-plan-row" key={category.bucket}>
             <div className="insight-plan-heading">
@@ -241,7 +241,7 @@ function PlanComparison({
             </div>
             <div
               className="insight-plan-bars"
-              aria-label={`${bucketMeta[category.bucket].label}: ${money(category.actualCents)} expenses against a ${money(category.plannedCents)} budget${savingsCents ? `, with ${money(savingsCents)} treated as savings` : ""}`}
+              aria-label={`${bucketMeta[category.bucket].label}: ${money(category.actualCents)} expenses against a ${money(category.plannedCents)} budget${savingsCents ? `, with ${money(savingsCents)} allocated as savings` : ""}`}
             >
               <span
                 className={`actual ${categoryClass[category.bucket]}`}
@@ -435,9 +435,9 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
             />
             <Metric
               label="Savings"
-              value={money(data.leftCents)}
+              value={money(data.savingsCents)}
               icon="pi pi-chart-line"
-              tone={data.leftCents < 0 ? "negative" : "positive"}
+              tone={data.savingsCents < 0 ? "negative" : "positive"}
             />
             <Metric
               label="Avg. spending"
@@ -461,7 +461,7 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
               title="Biggest category"
               body={
                 data.expenseCents
-                  ? `${bucketMeta[data.highestSpend.bucket].label} accounts for ${money(data.highestSpend.actualCents)} of your spending.`
+                  ? `${bucketMeta[data.highestSpend.bucket].label} accounts for ${money(data.highestSpend.allocatedCents)} of your allocation.`
                   : "Add categorized expenses to identify your largest spending category."
               }
             />

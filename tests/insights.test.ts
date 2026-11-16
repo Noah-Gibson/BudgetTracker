@@ -17,17 +17,18 @@ describe("budget insights", () => {
   });
 
   it("uses every pay-month's own targets and reports aggregate trends", () => {
-    const insights = calculateInsights([february, january]);
+    const insights = calculateInsights([february, january], "2026-03-01");
     expect(insights.incomeCents).toBe(300000);
     expect(insights.expenseCents).toBe(190000);
     expect(insights.leftCents).toBe(110000);
+    expect(insights.savingsCents).toBe(110000);
     expect(insights.averageExpenseCents).toBe(95000);
     expect(insights.periods.find((period) => period.id === "jan")).toMatchObject({ budgetCents: 100000 });
     expect(insights.categories.find((item) => item.bucket === "needs")).toMatchObject({ actualCents: 100000, plannedCents: 90000, varianceCents: 10000 });
-    expect(insights.categories.find((item) => item.bucket === "goals")).toMatchObject({ actualCents: 80000, plannedCents: 150000, varianceCents: -70000 });
-    expect(insights.highestSpend.bucket).toBe("needs");
+    expect(insights.categories.find((item) => item.bucket === "goals")).toMatchObject({ actualCents: 80000, savingsCents: 110000, allocatedCents: 190000, plannedCents: 150000, varianceCents: 40000 });
+    expect(insights.highestSpend.bucket).toBe("goals");
     expect(insights.largestChange?.changeCents).toBe(50000);
-    expect(insights.furthestFromPlan.bucket).toBe("goals");
+    expect(insights.furthestFromPlan.bucket).toBe("wants");
   });
 
   it("keeps empty and zero-spending data safe", () => {
@@ -37,5 +38,12 @@ describe("budget insights", () => {
     const zero = calculateInsights([march]);
     expect(zero.categories.every((item) => item.sharePercent === 0)).toBe(true);
     expect(zero.leftCents).toBe(0);
+  });
+
+  it("does not treat an in-progress pay-month's remainder as savings", () => {
+    const current = month("current", "2026-12-01", 100000, [{ id: "groceries", name: "Groceries", amountCents: 25000, bucket: "needs" }]);
+    const insights = calculateInsights([current], "2026-11-15");
+    expect(insights.savingsCents).toBe(0);
+    expect(insights.categories.find((item) => item.bucket === "goals")).toMatchObject({ savingsCents: 0, allocatedCents: 0 });
   });
 });

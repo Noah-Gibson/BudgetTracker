@@ -28,7 +28,7 @@ export type BudgetCycle = V2BudgetCycle;
 export type RecurringBillCandidate = { id: string; name: string; amountCents: number; bucket: Bucket; suggestedDueDay?: number };
 
 export const bucketMeta: Record<Bucket, { label: string; tone: string }> = {
-  needs: { label: "Needs", tone: "needs" }, goals: { label: "Loans, savings & investing", tone: "goals" }, wants: { label: "Disposable", tone: "wants" }
+  needs: { label: "Needs", tone: "needs" }, goals: { label: "Loans & investing", tone: "goals" }, wants: { label: "Disposable", tone: "wants" }
 };
 export const defaultTargets: Record<Bucket, number> = { needs: 50, goals: 30, wants: 20 };
 export const newId = () => crypto.randomUUID();
