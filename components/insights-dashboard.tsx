@@ -218,13 +218,20 @@ function PlanComparison({
 }: ReturnType<typeof calculateInsights> & {
   targetPercentages: Record<Bucket, number>;
 }) {
-  const maximum = Math.max(...categories.flatMap((category) => [category.allocatedCents, category.plannedCents]), 0);
   return (
     <div className="insight-plan-list">
       {categories.map((category) => {
         const goalPercent = targetPercentages[category.bucket];
         const savingsCents = category.savingsCents;
         const isOverBudget = category.allocatedCents > category.plannedCents;
+        const expenseWidth = category.plannedCents
+          ? Math.min(100, (category.actualCents / category.plannedCents) * 100)
+          : category.actualCents
+            ? 100
+            : 0;
+        const savingsWidth = category.plannedCents
+          ? Math.min(100 - expenseWidth, (savingsCents / category.plannedCents) * 100)
+          : 0;
         return (
           <div className="insight-plan-row" key={category.bucket}>
             <div className="insight-plan-heading">
@@ -246,17 +253,16 @@ function PlanComparison({
               <span
                 className={`actual ${categoryClass[category.bucket]}`}
                 style={{
-                  width: `${maximum ? category.actualCents / maximum * 100 : 0}%`,
+                  width: `${expenseWidth}%`,
                 }}
               />
               <span
                 className={`planned ${categoryClass[category.bucket]}`}
                 style={{
-                  width: `${maximum ? category.plannedCents / maximum * 100 : 0}%`,
+                  width: "100%",
                 }}
               />
-              {savingsCents > 0 && <span className="assumed-savings" style={{ left: `${maximum ? category.actualCents / maximum * 100 : 0}%`, width: `${maximum ? savingsCents / maximum * 100 : 0}%` }} />}
-              <span className="planned-marker" style={{ left: `${maximum ? category.plannedCents / maximum * 100 : 0}%` }} aria-hidden="true" />
+              {savingsCents > 0 && <span className="assumed-savings" style={{ left: `${expenseWidth}%`, width: `${savingsWidth}%` }} />}
             </div>
             <small>
               <b>Expenses {money(category.actualCents)}</b>
