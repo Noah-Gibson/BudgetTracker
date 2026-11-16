@@ -276,13 +276,21 @@ function PlanComparison({
         const goalPercent = targetPercentages[category.bucket];
         const savingsCents = category.savingsCents;
         const isOverBudget = category.allocatedCents > category.plannedCents;
-        const expenseWidth = category.plannedCents
-          ? Math.min(100, (category.actualCents / category.plannedCents) * 100)
+        const displayedCents = Math.max(category.plannedCents, category.allocatedCents);
+        const budgetWidth = displayedCents
+          ? (category.plannedCents / displayedCents) * 100
+          : 0;
+        const expenseWidth = displayedCents
+          ? (Math.min(category.actualCents, category.plannedCents) / displayedCents) * 100
           : category.actualCents
             ? 100
             : 0;
-        const savingsWidth = category.plannedCents
-          ? Math.min(100 - expenseWidth, (savingsCents / category.plannedCents) * 100)
+        const savingsWithinBudget = Math.min(
+          savingsCents,
+          Math.max(0, category.plannedCents - category.actualCents),
+        );
+        const savingsWidth = displayedCents
+          ? (savingsWithinBudget / displayedCents) * 100
           : 0;
         return (
           <div className="insight-plan-row" key={category.bucket}>
@@ -311,10 +319,14 @@ function PlanComparison({
               <span
                 className={`planned ${categoryClass[category.bucket]}`}
                 style={{
-                  width: "100%",
+                  width: `${budgetWidth}%`,
                 }}
               />
               {savingsCents > 0 && <span className="assumed-savings" style={{ left: `${expenseWidth}%`, width: `${savingsWidth}%` }} />}
+              {isOverBudget && <>
+                <span className="over-budget" style={{ left: `${budgetWidth}%`, width: `${100 - budgetWidth}%` }} />
+                <span className="planned-marker" style={{ left: `${budgetWidth}%` }} aria-hidden="true" />
+              </>}
             </div>
             <small>
               <b>Expenses {money(category.actualCents)}</b>
