@@ -129,6 +129,17 @@ button { touch-action: manipulation; }
 .summary-card strong { display: block; overflow-wrap: anywhere; font-size: 1.3rem; }
 .summary-card.negative strong { color: var(--rose); }
 .summary-card.positive strong { color: var(--teal-dark); }
+.pay-month-cash-flow { margin-bottom: .8rem; }
+.pay-month-cash-flow .p-card-body { padding: 1rem; }
+.cash-flow-heading, .cash-flow-row { display: flex; align-items: center; gap: .8rem; }
+.cash-flow-heading { justify-content: space-between; margin-bottom: 1rem; }
+.cash-flow-heading > div:first-child, .cash-flow-balance { display: grid; gap: .1rem; }
+.cash-flow-heading span, .cash-flow-heading small, .cash-flow-row > span { color: var(--muted); font-size: .8rem; }
+.cash-flow-heading > div:first-child > span { color: var(--ink); font-size: .95rem; font-weight: 700; }
+.cash-flow-balance { justify-items: end; }.cash-flow-balance strong { font-size: 1.25rem; }.cash-flow-balance.negative strong { color: var(--rose); }.cash-flow-balance.positive strong { color: var(--teal-dark); }
+.cash-flow-graph { display: grid; gap: .7rem; }
+.cash-flow-row > span { width: 4.4rem; flex: 0 0 auto; }.cash-flow-row > strong { width: 6.5rem; flex: 0 0 auto; text-align: right; font-size: .9rem; }
+.cash-flow-track { height: .9rem; flex: 1 1 auto; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }.cash-flow-track i { display: block; height: 100%; border-radius: inherit; }.cash-flow-track i.income { background: var(--accent); }.cash-flow-track i.expenses { background: var(--rose); }
 .income-panel { margin-top: .8rem; }
 .expense-search { display: grid; gap: .32rem; margin-bottom: .8rem; }
 .expense-search > label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
