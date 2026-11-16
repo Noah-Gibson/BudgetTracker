@@ -258,7 +258,7 @@ function PlanComparison({
               <b>{money(category.actualCents)} spent</b>
               <span>
                 {Math.abs(variancePercent).toFixed(0)} percentage points{" "}
-                {variancePercent > 0 ? "over" : "under"} goal
+                {variancePercent > 0 ? "above" : "below"} goal share
               </span>
             </small>
           </div>
@@ -433,7 +433,7 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
               icon="pi pi-credit-card"
             />
             <Metric
-              label="Money left"
+              label="Savings"
               value={money(data.leftCents)}
               icon="pi pi-chart-line"
               tone={data.leftCents < 0 ? "negative" : "positive"}
@@ -475,15 +475,6 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
                 data.largestChange
                   ? `${data.largestChange.changeCents >= 0 ? "Up" : "Down"} ${money(Math.abs(data.largestChange.changeCents))} from ${shortDate(data.largestChange.from.startDate)} to ${shortDate(data.largestChange.to.startDate)}.`
                   : "Add another pay-month to compare spending over time."
-              }
-            />
-            <Callout
-              icon="pi pi-flag"
-              title="Plan check"
-              body={
-                data.incomeCents
-                  ? `${bucketMeta[data.furthestFromPlan.bucket].label} is ${data.furthestFromPlan.varianceCents > 0 ? `${money(data.furthestFromPlan.varianceCents)} over` : `${money(Math.abs(data.furthestFromPlan.varianceCents))} under`} plan.`
-                  : "Add income to compare your spending with category targets."
               }
             />
           </section>
