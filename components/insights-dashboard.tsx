@@ -218,10 +218,6 @@ function CategoryTrendChart({ periods }: ReturnType<typeof calculateInsights>) {
   return (
     <div className="insight-chart-wrap">
       <ChartLegend />
-      <p className="insight-scale-note">
-        Shared scale: up to {money(maximum)}. The dashed marker is that
-        pay-month’s budget.
-      </p>
       <div
         className="insight-stack-list"
         role="img"
@@ -503,7 +499,6 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
             className="insight-card insight-plan-card"
             title="Plan versus actual"
           >
-            <p className="insight-card-copy">Your spending makeup compared with your latest category goals.</p>
             <PlanComparison
               {...data}
               targetPercentages={sortedMonths.at(-1)!.targetPercentages}
