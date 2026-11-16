@@ -303,8 +303,8 @@ function PlanComparison({
               </span>
               <strong className={isOverBudget ? "over" : ""}>
                 {money(savingsCents ? category.allocatedCents : category.actualCents)} {savingsCents ? "expenses + savings" : "expenses"}
-                <small>{category.sharePercent.toFixed(0)}% {savingsCents ? "expenses + savings" : "expenses"} · Goal {goalPercent.toFixed(0)}%</small>
               </strong>
+              <small className="insight-plan-goal">{category.sharePercent.toFixed(0)}% {savingsCents ? "expenses + savings" : "expenses"} · Goal {goalPercent.toFixed(0)}%</small>
             </div>
             <div
               className="insight-plan-bars"
