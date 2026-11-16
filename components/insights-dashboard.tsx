@@ -235,7 +235,7 @@ function PlanComparison({
                 {bucketMeta[category.bucket].label}
               </span>
               <strong className={isOverBudget ? "over" : ""}>
-                {money(category.actualCents)} expenses
+                {money(savingsCents ? category.allocatedCents : category.actualCents)} {savingsCents ? "expenses + savings" : "expenses"}
                 <small>{category.sharePercent.toFixed(0)}% {savingsCents ? "expenses + savings" : "expenses"} · Goal {goalPercent.toFixed(0)}%</small>
               </strong>
             </div>
@@ -272,7 +272,7 @@ function PlanComparison({
 
 export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
   const [range, setRange] = useState<InsightRange>("all");
-  const [includeInProgress, setIncludeInProgress] = useState(true);
+  const [includeInProgress, setIncludeInProgress] = useState(false);
   const sortedMonths = useMemo(
     () => selectInsightPayMonths(vault.payMonths, "all"),
     [vault.payMonths],
