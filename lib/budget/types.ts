@@ -4,7 +4,7 @@ export type IncomeEntry = { id: string; name: string; amountCents: number; date?
 export type CreditCardPayment = { id: string; name: string; dueDay: number };
 export type ExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; templateId?: string; amountConfirmed?: boolean; creditCardId?: string };
 /** Stored in the encrypted vault; it intentionally has no dedicated UI panel. */
-export type RecurringExpense = { id: string; name: string; amountCents: number; bucket: Bucket; dueDay: number; active: boolean };
+export type RecurringExpense = { id: string; name: string; amountCents: number; bucket: Bucket; dueDay: number; active: boolean; creditCardId?: string };
 export type PayMonth = { id: string; startDate: string; endDate: string; targetPercentages: Record<Bucket, number>; incomes: IncomeEntry[]; expenses: ExpenseEntry[] };
 export type SpreadsheetBackupSettings = { enabled: boolean; folderId?: string; lastSuccessfulDate?: string; lastBackupFileId?: string; lastBackupAt?: string };
 // This is encrypted alongside the budget. It is a recovery-method label only;
@@ -82,7 +82,7 @@ export function dueDatesWithin(startDate: string, endDate: string, dueDay: numbe
 export function clonePayMonth(previous: PayMonth | undefined, startDate: string, targets: Record<Bucket, number>, recurringExpenses: RecurringExpense[]): PayMonth {
   const endDate = addDays(startDate, 27);
   const incomes = previous?.incomes.map((income) => ({ ...income, id: newId(), date: undefined })) ?? [];
-  const expenses = recurringExpenses.flatMap((expense) => expense.active ? dueDatesWithin(startDate, endDate, expense.dueDay).map((date) => ({ id: newId(), name: expense.name, amountCents: expense.amountCents, date, bucket: expense.bucket, templateId: expense.id, amountConfirmed: false })) : []);
+  const expenses = recurringExpenses.flatMap((expense) => expense.active ? dueDatesWithin(startDate, endDate, expense.dueDay).map((date) => ({ id: newId(), name: expense.name, amountCents: expense.amountCents, date, bucket: expense.bucket, templateId: expense.id, amountConfirmed: false, ...(expense.creditCardId ? { creditCardId: expense.creditCardId } : {}) })) : []);
   return { id: newId(), startDate, endDate, targetPercentages: { ...targets }, incomes, expenses };
 }
 /** Add missing occurrences to already-created pay-months after the source month. */
@@ -91,7 +91,7 @@ export function backfillRecurringExpense(payMonths: PayMonth[], sourceMonthStart
     if (month.startDate <= sourceMonthStartDate) return month;
     const additions = expenses.flatMap((template) => template.active ? dueDatesWithin(month.startDate, month.endDate, template.dueDay)
       .filter((date) => !month.expenses.some((entry) => entry.templateId === template.id && entry.date === date))
-      .map((date) => ({ id: newId(), name: template.name, amountCents: template.amountCents, date, bucket: template.bucket, templateId: template.id, amountConfirmed: false })) : []);
+      .map((date) => ({ id: newId(), name: template.name, amountCents: template.amountCents, date, bucket: template.bucket, templateId: template.id, amountConfirmed: false, ...(template.creditCardId ? { creditCardId: template.creditCardId } : {}) })) : []);
     return additions.length ? { ...month, expenses: [...month.expenses, ...additions] } : month;
   });
 }

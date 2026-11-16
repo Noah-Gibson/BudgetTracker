@@ -51,6 +51,18 @@ describe("pay-month budgets", () => {
     expect(repeated.slice(1).flatMap((month) => month.expenses)).toHaveLength(2);
   });
 
+  it("keeps recurring credit card links when autofilling new and existing future pay-months", () => {
+    const vault = createEmptyVault();
+    const cardExpense = { id: "card-payment", name: "Travel Visa", amountCents: 12500, bucket: "needs" as const, dueDay: 15, active: true, creditCardId: "travel-visa" };
+    const current = clonePayMonth(undefined, "2026-01-15", vault.settings.defaultTargets, []);
+    const next = clonePayMonth(current, "2026-02-12", vault.settings.defaultTargets, [cardExpense]);
+    const future = clonePayMonth(next, "2026-03-12", vault.settings.defaultTargets, []);
+    const backfilled = backfillRecurringExpense([current, next, future], current.startDate, [cardExpense]);
+
+    expect(next.expenses[0]).toMatchObject({ templateId: "card-payment", creditCardId: "travel-visa" });
+    expect(backfilled.slice(1).flatMap((month) => month.expenses).every((expense) => expense.creditCardId === "travel-visa")).toBe(true);
+  });
+
   it("groups expenses by date with current entries first and upcoming entries in due-date order", () => {
     const entries = [
       { id: "undated", name: "Cash", amountCents: 100 },
