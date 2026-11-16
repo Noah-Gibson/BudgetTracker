@@ -56,6 +56,12 @@ export function futureExpenseTotal(entries: Array<{ amountCents: number; date?: 
   return entries.reduce((total, entry) => total + (entry.date && entry.date > today ? entry.amountCents : 0), 0);
 }
 
+/** Case-insensitive name search for expenses in the active pay-month. */
+export function searchExpenses<T extends { name: string }>(entries: T[], query: string) {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return normalizedQuery ? entries.filter((entry) => entry.name.toLocaleLowerCase().includes(normalizedQuery)) : entries;
+}
+
 /** Expenses assigned to a card within one pay-month. */
 export function creditCardExpenses(month: PayMonth, creditCardId: string) {
   return month.expenses.filter((expense) => expense.creditCardId === creditCardId);

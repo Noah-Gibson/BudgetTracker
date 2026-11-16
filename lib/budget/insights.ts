@@ -17,6 +17,7 @@ export type InsightPeriod = {
   startDate: string;
   endDate: string;
   incomeCents: number;
+  budgetCents: number;
   expenseCents: number;
   categoryCents: Record<Bucket, number>;
 };
@@ -44,11 +45,14 @@ export function selectInsightPayMonths(payMonths: PayMonth[], range: InsightRang
 export function calculateInsights(payMonths: PayMonth[]) {
   const periods: InsightPeriod[] = sortPayMonths(payMonths).map((month) => {
     const categoryCents = centsByBucket(month);
+    const incomeCents = month.incomes.reduce((sum, income) => sum + income.amountCents, 0);
+    const budgetCents = insightBuckets.reduce((sum, bucket) => sum + Math.round(incomeCents * month.targetPercentages[bucket] / 100), 0);
     return {
       id: month.id,
       startDate: month.startDate,
       endDate: month.endDate,
-      incomeCents: month.incomes.reduce((sum, income) => sum + income.amountCents, 0),
+      incomeCents,
+      budgetCents,
       expenseCents: month.expenses.reduce((sum, expense) => sum + expense.amountCents, 0),
       categoryCents
     };

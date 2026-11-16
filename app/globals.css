@@ -130,6 +130,13 @@ button { touch-action: manipulation; }
 .summary-card.negative strong { color: var(--rose); }
 .summary-card.positive strong { color: var(--teal-dark); }
 .income-panel { margin-top: .8rem; }
+.expense-search { display: grid; gap: .32rem; margin-bottom: .8rem; }
+.expense-search > label { color: var(--muted); font-size: .78rem; font-weight: 700; }
+.expense-search > div { position: relative; display: flex; align-items: center; max-width: 30rem; }
+.expense-search > div > .pi-search { position: absolute; z-index: 1; left: .75rem; color: var(--muted); font-size: .85rem; pointer-events: none; }
+.expense-search .p-inputtext { width: 100%; padding-left: 2.2rem; }
+.expense-search .clear-date-icon { right: .35rem; }
+.expense-search-results { margin: .15rem 0 0; }
 .credit-card-panel { margin-top: .8rem; }
 .credit-card-form { grid-template-columns: minmax(0, 1fr); }
 .credit-card-indicator { margin-inline: .45rem; color: var(--teal); font-size: .8em; }
@@ -638,6 +645,8 @@ body { transition: background-color .18s ease, color .18s ease; }
 .insights-heading h1 { margin: 0; font-family: "Source Serif 4", Georgia, serif; font-size: clamp(2rem, 7vw, 3.35rem); letter-spacing: -.045em; line-height: 1.04; }
 .insights-heading > div > p:last-child { max-width: 47rem; margin: .65rem 0 0; color: var(--muted); line-height: 1.5; }
 .insight-range-control { display: grid; gap: .7rem; }
+.insight-in-progress-choice { justify-self: start; font-size: .8rem; }
+.insight-in-progress-choice { justify-self: start; font-size: .8rem; }
 .insight-range-buttons { display: flex; flex-wrap: wrap; gap: .45rem; }
 .insight-range-buttons .p-button { padding: .5rem .7rem; font-size: .83rem; }
 .insight-range-buttons .p-button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
@@ -664,14 +673,16 @@ body { transition: background-color .18s ease, color .18s ease; }
 .insight-swatch.income { background: var(--accent); }.insight-swatch.expenses { background: var(--rose); }
 .insight-grid-line { stroke: var(--line); stroke-width: 1; }.insight-axis-label { fill: var(--muted); font-size: 11px; }
 .insight-income-bar { fill: var(--accent); }.insight-expense-bar { fill: var(--rose); }
+.insight-scale-note { margin: -.3rem 0 .75rem; color: var(--muted); font-size: .76rem; line-height: 1.4; }
 .insight-stack-list { display: grid; gap: .8rem; }
 .insight-stack-row { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr) auto; align-items: center; gap: .65rem; color: var(--muted); font-size: .78rem; }
 .insight-stack-row strong { color: var(--ink); font-size: .78rem; white-space: nowrap; }
-.insight-stack-track { display: flex; height: 1rem; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }
-.insight-stack-track i { display: block; min-width: 0; }.insight-stack-track i.needs { background: var(--category-needs); }.insight-stack-track i.goals { background: var(--category-goals); }.insight-stack-track i.wants { background: var(--category-wants); }
+.insight-stack-track { position: relative; display: flex; height: 1rem; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }
+.insight-stack-track i { position: relative; z-index: 1; display: block; min-width: 0; }.insight-stack-track i.needs { background: var(--category-needs); }.insight-stack-track i.goals { background: var(--category-goals); }.insight-stack-track i.wants { background: var(--category-wants); }
+.insight-spend-budget { position: absolute; z-index: 2; top: 0; bottom: 0; width: 0; margin-left: -1px; border-left: 2px dashed var(--ink); pointer-events: none; }
 .insight-plan-card { margin-bottom: 2rem; }.insight-plan-list { display: grid; gap: 1.15rem; }
 .insight-plan-row { display: grid; gap: .42rem; }.insight-plan-heading { display: flex; justify-content: space-between; gap: .75rem; font-size: .86rem; }
-.insight-plan-heading > span { display: inline-flex; align-items: center; gap: .4rem; min-width: 0; }.insight-plan-heading strong { white-space: nowrap; color: var(--teal-dark); font-size: .8rem; }.insight-plan-heading strong.over { color: var(--rose); }
+.insight-plan-heading > span { display: inline-flex; align-items: center; gap: .4rem; min-width: 0; }.insight-plan-heading strong { display: grid; justify-items: end; white-space: nowrap; color: var(--teal-dark); font-size: 1rem; }.insight-plan-heading strong small { color: var(--muted); font-size: .72rem; font-weight: 600; }.insight-plan-heading strong.over { color: var(--rose); }
 .insight-plan-bars { position: relative; height: .9rem; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }
 .insight-plan-bars .actual { position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; border-radius: inherit; }.insight-plan-bars .actual.needs { background: var(--category-needs); }.insight-plan-bars .actual.goals { background: var(--category-goals); }.insight-plan-bars .actual.wants { background: var(--category-wants); }
 .insight-plan-bars .planned { position: absolute; z-index: 2; top: 0; bottom: 0; margin-left: -1px; border-left: 2px dashed var(--ink); }

@@ -22,6 +22,7 @@ describe("budget insights", () => {
     expect(insights.expenseCents).toBe(190000);
     expect(insights.leftCents).toBe(110000);
     expect(insights.averageExpenseCents).toBe(95000);
+    expect(insights.periods.find((period) => period.id === "jan")).toMatchObject({ budgetCents: 100000 });
     expect(insights.categories.find((item) => item.bucket === "needs")).toMatchObject({ actualCents: 100000, plannedCents: 90000, varianceCents: 10000 });
     expect(insights.categories.find((item) => item.bucket === "goals")).toMatchObject({ actualCents: 80000, plannedCents: 150000, varianceCents: -70000 });
     expect(insights.highestSpend.bucket).toBe("needs");

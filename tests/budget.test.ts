@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backfillRecurringExpense, clonePayMonth, createEmptyVault, creditCardExpenseTotal, creditCardExpenses, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, todayISO, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
+import { backfillRecurringExpense, clonePayMonth, createEmptyVault, creditCardExpenseTotal, creditCardExpenses, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, searchExpenses, todayISO, totals, upgradeVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
 describe("pay-month budgets", () => {
   it("uses the device's local calendar date for today", () => {
@@ -77,6 +77,17 @@ describe("pay-month budgets", () => {
     expect(groups.future.map((entry) => entry.id)).toEqual(["tomorrow", "later"]);
     expect(expenseListGroups(entries.filter((entry) => entry.date !== "2026-08-24" && entry.date !== "2026-08-30"), "2026-08-23").future).toEqual([]);
     expect(futureExpenseTotal(entries, "2026-08-23")).toBe(1000);
+  });
+
+  it("searches expense names without changing their original order", () => {
+    const entries = [
+      { id: "groceries", name: "Groceries", amountCents: 9800 },
+      { id: "gas", name: "Gas station", amountCents: 4500 },
+      { id: "meal", name: "Groceries delivery", amountCents: 6600 }
+    ];
+
+    expect(searchExpenses(entries, "  GROCERIES ").map((entry) => entry.id)).toEqual(["groceries", "meal"]);
+    expect(searchExpenses(entries, "")).toEqual(entries);
   });
 
   it("keeps credit card payment settings in a new encrypted vault", () => {
