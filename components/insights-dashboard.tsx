@@ -218,11 +218,13 @@ function PlanComparison({
 }: ReturnType<typeof calculateInsights> & {
   targetPercentages: Record<Bucket, number>;
 }) {
+  const maximum = Math.max(...categories.flatMap((category) => [category.actualCents, category.plannedCents]), 0);
   return (
     <div className="insight-plan-list">
       {categories.map((category) => {
         const goalPercent = targetPercentages[category.bucket];
-        const variancePercent = category.sharePercent - goalPercent;
+        const savingsCents = category.bucket === "goals" ? Math.max(0, category.plannedCents - category.actualCents) : 0;
+        const isOverBudget = category.actualCents > category.plannedCents;
         return (
           <div className="insight-plan-row" key={category.bucket}>
             <div className="insight-plan-heading">
@@ -232,34 +234,33 @@ function PlanComparison({
                 />
                 {bucketMeta[category.bucket].label}
               </span>
-              <strong className={variancePercent > 0 ? "over" : ""}>
-                {category.sharePercent.toFixed(0)}% spent{" "}
-                <small>Goal {goalPercent.toFixed(0)}%</small>
+              <strong className={isOverBudget ? "over" : ""}>
+                {money(category.actualCents)} expenses
+                <small>{category.sharePercent.toFixed(0)}% expenses · Goal {goalPercent.toFixed(0)}%</small>
               </strong>
             </div>
             <div
               className="insight-plan-bars"
-              aria-label={`${bucketMeta[category.bucket].label}: ${category.sharePercent.toFixed(1)}% of spending against a ${goalPercent.toFixed(1)}% goal`}
+              aria-label={`${bucketMeta[category.bucket].label}: ${money(category.actualCents)} expenses against a ${money(category.plannedCents)} budget${savingsCents ? `, with ${money(savingsCents)} treated as savings` : ""}`}
             >
               <span
                 className={`actual ${categoryClass[category.bucket]}`}
                 style={{
-                  width: `${category.sharePercent}%`,
+                  width: `${maximum ? category.actualCents / maximum * 100 : 0}%`,
                 }}
               />
               <span
                 className={`planned ${categoryClass[category.bucket]}`}
                 style={{
-                  width: `${goalPercent}%`,
+                  width: `${maximum ? category.plannedCents / maximum * 100 : 0}%`,
                 }}
               />
+              {savingsCents > 0 && <span className="assumed-savings" style={{ left: `${maximum ? category.actualCents / maximum * 100 : 0}%`, width: `${maximum ? savingsCents / maximum * 100 : 0}%` }} />}
             </div>
             <small>
-              <b>{money(category.actualCents)} spent</b>
-              <span>
-                {Math.abs(variancePercent).toFixed(0)} percentage points{" "}
-                {variancePercent > 0 ? "above" : "below"} goal share
-              </span>
+              <b>Expenses {money(category.actualCents)}</b>
+              {category.bucket === "goals" && <span>Savings {money(savingsCents)}</span>}
+              <span>Budget {money(category.plannedCents)}</span>
             </small>
           </div>
         );
