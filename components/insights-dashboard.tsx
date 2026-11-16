@@ -236,7 +236,7 @@ function PlanComparison({
               </span>
               <strong className={isOverBudget ? "over" : ""}>
                 {money(category.actualCents)} expenses
-                <small>{category.sharePercent.toFixed(0)}% expenses · Goal {goalPercent.toFixed(0)}%</small>
+                <small>{category.sharePercent.toFixed(0)}% {savingsCents ? "expenses + savings" : "expenses"} · Goal {goalPercent.toFixed(0)}%</small>
               </strong>
             </div>
             <div
@@ -256,6 +256,7 @@ function PlanComparison({
                 }}
               />
               {savingsCents > 0 && <span className="assumed-savings" style={{ left: `${maximum ? category.actualCents / maximum * 100 : 0}%`, width: `${maximum ? savingsCents / maximum * 100 : 0}%` }} />}
+              <span className="planned-marker" style={{ left: `${maximum ? category.plannedCents / maximum * 100 : 0}%` }} aria-hidden="true" />
             </div>
             <small>
               <b>Expenses {money(category.actualCents)}</b>
