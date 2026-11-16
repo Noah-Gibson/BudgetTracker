@@ -448,11 +448,7 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
             className="insight-card insight-plan-card"
             title="Plan versus actual"
           >
-            <p className="insight-card-copy">
-              Your spending makeup compared with your latest category goals.
-              Solid bars show the percent you spent; lighter bars and their
-              dashed edge show your goal.
-            </p>
+            <p className="insight-card-copy">Your spending makeup compared with your latest category goals.</p>
             <PlanComparison
               {...data}
               targetPercentages={sortedMonths.at(-1)!.targetPercentages}

@@ -138,6 +138,7 @@ button { touch-action: manipulation; }
 .expense-search .clear-date-icon { right: .35rem; }
 .expense-search-results { margin: .15rem 0 0; }
 .credit-card-panel { margin-top: .8rem; }
+.credit-card-panel .income-summary small { display: none; }
 .credit-card-form { grid-template-columns: minmax(0, 1fr); }
 .credit-card-indicator { margin-inline: .45rem; color: var(--teal); font-size: .8em; }
 .credit-card-list { display: grid; gap: .35rem; margin-top: .9rem; }
