@@ -639,8 +639,8 @@ function PayMonthBoard({ vault, onChange }: { vault: BudgetVault; onChange: (vau
     <div className="summary-grid"><Summary label="Pay-month income" value={money(values.income)} icon="pi pi-wallet" /><Summary label="Pay-month expenses" value={money(values.expenses)} icon="pi pi-credit-card" /><Summary label="Pay-month balance" value={money(values.remaining)} icon="pi pi-chart-line" tone={values.remaining < 0 ? "negative" : "positive"} /></div>
     <PayMonthExpenseSearch month={month} />
     <div className="bucket-grid">{(Object.keys(bucketMeta) as Bucket[]).map((bucket) => <PayMonthBucketPanel key={bucket} bucket={bucket} vault={vault} month={month} income={values.income} spent={values.byBucket(bucket)} onChange={onChange} />)}</div>
-    <PayMonthIncomePanel month={month} onChange={updateMonth} />
     <CreditCardPaymentsPanel vault={vault} month={month} onChange={onChange} />
+    <PayMonthIncomePanel month={month} onChange={updateMonth} />
     <Dialog visible={dialog === "edit"} modal closable showCloseIcon header="Edit pay-month budget" className="compact-dialog" onHide={() => setDialog(null)}><p>Changing the start date keeps this budget at 28 days.</p><label className="field-label" htmlFor="edit-pay-month-start">Budget start date</label><div className="pay-month-date-field"><div className="date-input-with-clear"><input className="native-input" id="edit-pay-month-start" type="date" value={editStart} onChange={(event) => setEditStart(event.target.value)} /></div></div><div className="dialog-actions form-buttons"><Button label="Save budget" icon="pi pi-check" onClick={() => { if (editStart) { updateMonth({ ...month, startDate: editStart, endDate: addDays(editStart, 27) }); setDialog(null); } }} /><Button text label="Cancel" onClick={() => setDialog(null)} /><Button outlined severity="danger" label="Delete budget" icon="pi pi-trash" onClick={deleteMonth} /></div></Dialog>
   </section>;
 }
