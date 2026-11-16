@@ -141,14 +141,14 @@ button { touch-action: manipulation; }
 .cash-flow-row > span { width: 4.4rem; flex: 0 0 auto; }.cash-flow-row > strong { width: 6.5rem; flex: 0 0 auto; text-align: right; font-size: .9rem; }
 .cash-flow-track { height: .9rem; flex: 1 1 auto; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }.cash-flow-track i { display: block; height: 100%; border-radius: inherit; }.cash-flow-track i.income { background: var(--accent); }.cash-flow-track i.expenses { background: var(--rose); }
 .income-panel { margin-top: .8rem; }
-.expense-search { display: grid; gap: .32rem; margin-bottom: .8rem; }
+.expense-search { display: grid; gap: .32rem; margin: 1.25rem 0 .8rem; }
 .expense-search > label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .expense-search > div { position: relative; display: flex; align-items: center; max-width: 30rem; }
 .expense-search > div > .pi-search { position: absolute; z-index: 1; left: .75rem; color: var(--muted); font-size: .85rem; pointer-events: none; }
 .expense-search .p-inputtext { width: 100%; padding-left: 2.2rem; }
 .expense-search .clear-date-icon { right: .35rem; }
 .expense-search-results { margin: .15rem 0 0; }
-.credit-card-panel { margin-top: .8rem; }
+.credit-card-panel { margin-top: 1.25rem; }
 .credit-card-panel .income-summary small { display: none; }
 .credit-card-form { grid-template-columns: minmax(0, 1fr); }
 .credit-card-indicator { margin-inline: .45rem; color: var(--teal); font-size: .8em; }
@@ -673,7 +673,7 @@ body { transition: background-color .18s ease, color .18s ease; }
 .insight-callouts article div { min-width: 0; }
 .insight-callouts strong { font-size: .86rem; }
 .insight-callouts p { margin: .25rem 0 0; color: var(--muted); font-size: .86rem; line-height: 1.4; }
-.insight-chart-grid { display: grid; gap: .8rem; margin-bottom: .8rem; }
+.insight-chart-grid { display: grid; gap: .8rem; margin: 1.25rem 0 .8rem; }
 .insight-card .p-card-body { padding: 1.1rem; }
 .insight-card .p-card-title { margin-bottom: .25rem; font-size: 1.05rem; }
 .insight-card-copy { margin: 0 0 1rem; color: var(--muted); font-size: .86rem; line-height: 1.45; }
