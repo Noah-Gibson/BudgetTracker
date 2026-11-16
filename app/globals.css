@@ -666,6 +666,7 @@ body { transition: background-color .18s ease, color .18s ease; }
 .insight-custom-range label { display: grid; gap: .28rem; color: var(--muted); font-size: .76rem; font-weight: 700; }
 .insight-custom-range select { width: 100%; min-width: 0; padding: .55rem .6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--ink); }
 .insights-summary { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }
+.analytics-cash-flow { margin-bottom: .8rem; }.analytics-cash-flow .p-card-body { padding: 1rem; }.analytics-cash-flow-average { display: flex; align-items: baseline; justify-content: space-between; gap: .8rem; margin-top: .85rem; padding-top: .8rem; border-top: 1px solid var(--line); }.analytics-cash-flow-average span { color: var(--muted); font-size: .8rem; }.analytics-cash-flow-average strong { font-size: .9rem; }
 .insight-callouts { display: grid; gap: .75rem; margin: .8rem 0; }
 .insight-callouts article { display: flex; min-width: 0; align-items: flex-start; gap: .75rem; padding: .95rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .insight-callouts article > i { display: grid; width: 2.35rem; height: 2.35rem; flex: 0 0 auto; place-items: center; border-radius: 9px; background: var(--subtle-accent); color: var(--accent); }

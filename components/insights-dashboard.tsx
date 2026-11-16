@@ -51,6 +51,58 @@ function ChartLegend() {
   );
 }
 
+function InsightsCashFlowSummary({
+  income,
+  spending,
+  savings,
+  averageSpending,
+}: {
+  income: number;
+  spending: number;
+  savings: number;
+  averageSpending: number;
+}) {
+  const maximum = Math.max(income, spending, 1);
+  return (
+    <Card className="analytics-cash-flow">
+      <div className="cash-flow-heading">
+        <div>
+          <span>Cash flow</span>
+          <small>Selected pay-months</small>
+        </div>
+        <div className="cash-flow-balance positive">
+          <span>Savings</span>
+          <strong>{money(savings)}</strong>
+        </div>
+      </div>
+      <div
+        className="cash-flow-graph"
+        role="img"
+        aria-label={`Income ${money(income)}, spending ${money(spending)}, savings ${money(savings)}, and average spending ${money(averageSpending)}.`}
+      >
+        <div className="cash-flow-row">
+          <span>Income</span>
+          <div className="cash-flow-track">
+            <i className="income" style={{ width: `${(income / maximum) * 100}%` }} />
+          </div>
+          <strong>{money(income)}</strong>
+        </div>
+        <div className="cash-flow-row">
+          <span>Spending</span>
+          <div className="cash-flow-track">
+            <i className="expenses" style={{ width: `${(spending / maximum) * 100}%` }} />
+          </div>
+          <strong>{money(spending)}</strong>
+        </div>
+      </div>
+      <div className="analytics-cash-flow-average">
+        <span>Avg. spending</span>
+        <strong>{money(averageSpending)}</strong>
+      </div>
+    </Card>
+  );
+}
+
 function CashFlowChart({ periods }: ReturnType<typeof calculateInsights>) {
   const maximum = Math.max(
     ...periods.flatMap((period) => [period.incomeCents, period.expenseCents]),
@@ -429,29 +481,12 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
         </div>
       ) : (
         <>
-          <div className="summary-grid insights-summary">
-            <Metric
-              label="Income"
-              value={money(data.incomeCents)}
-              icon="pi pi-wallet"
-            />
-            <Metric
-              label="Spending"
-              value={money(data.expenseCents)}
-              icon="pi pi-credit-card"
-            />
-            <Metric
-              label="Savings"
-              value={money(data.savingsCents)}
-              icon="pi pi-chart-line"
-              tone={data.savingsCents < 0 ? "negative" : "positive"}
-            />
-            <Metric
-              label="Avg. spending"
-              value={money(data.averageExpenseCents)}
-              icon="pi pi-calendar"
-            />
-          </div>
+          <InsightsCashFlowSummary
+            income={data.incomeCents}
+            spending={data.expenseCents}
+            savings={data.savingsCents}
+            averageSpending={data.averageExpenseCents}
+          />
           <Card
             className="insight-card insight-plan-card"
             title="Plan versus actual"
@@ -508,25 +543,6 @@ export function InsightsDashboard({ vault }: { vault: BudgetVault }) {
   );
 }
 
-function Metric({
-  label,
-  value,
-  icon,
-  tone,
-}: {
-  label: string;
-  value: string;
-  icon: string;
-  tone?: "positive" | "negative";
-}) {
-  return (
-    <Card className={`summary-card ${tone ?? ""}`}>
-      <i className={icon} />
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </Card>
-  );
-}
 function Callout({
   icon,
   title,
