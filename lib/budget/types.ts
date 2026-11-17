@@ -1,8 +1,8 @@
 export type Bucket = "needs" | "goals" | "wants";
 
 export type IncomeEntry = { id: string; name: string; amountCents: number; date?: string };
-export type CreditCardPayment = { id: string; name: string; dueDay: number };
-export type ExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; templateId?: string; amountConfirmed?: boolean; creditCardId?: string };
+export type CreditCardPayment = { id: string; name: string; statementCloseDay?: number; /** Retained only so existing cards can be updated without changing expense history. */ dueDay?: number };
+export type ExpenseEntry = { id: string; name: string; amountCents: number; date?: string; bucket: Bucket; templateId?: string; amountConfirmed?: boolean; creditCardId?: string; /** The close date ending the billing cycle in which this purchase is paid. */ creditCardPaymentCycleEndDate?: string };
 /** Stored in the encrypted vault; it intentionally has no dedicated UI panel. */
 export type RecurringExpense = { id: string; name: string; amountCents: number; bucket: Bucket; dueDay: number; active: boolean; creditCardId?: string | null };
 export type PayMonth = { id: string; startDate: string; endDate: string; targetPercentages: Record<Bucket, number>; incomes: IncomeEntry[]; expenses: ExpenseEntry[] };
@@ -71,6 +71,33 @@ export function creditCardExpenseTotal(month: PayMonth, creditCardId: string) {
   return creditCardExpenses(month, creditCardId).reduce((total, expense) => total + expense.amountCents, 0);
 }
 
+/**
+ * A card purchase belongs to the statement that closes on or after its spend
+ * date, and is paid in full during the following billing cycle.  We save that
+ * following close date with the purchase so later card-setting edits never
+ * rewrite its expected-payment history.
+ */
+export function creditCardPaymentCycleEndDate(spendDate: string, statementCloseDay: number) {
+  const spend = new Date(`${spendDate}T12:00:00`);
+  const thisClose = dueDateForMonth(spend.getFullYear(), spend.getMonth(), statementCloseDay);
+  const statementClose = spendDate <= thisClose ? thisClose : dueDateForMonth(spend.getFullYear(), spend.getMonth() + 1, statementCloseDay);
+  const close = new Date(`${statementClose}T12:00:00`);
+  return dueDateForMonth(close.getFullYear(), close.getMonth() + 1, statementCloseDay);
+}
+
+export type CreditCardPaymentExpense = { expense: ExpenseEntry; payMonth: PayMonth };
+
+/** Card purchases expected to be paid in full during the selected pay-month. */
+export function creditCardPaymentExpenses(vault: BudgetVault, month: PayMonth, creditCardId: string): CreditCardPaymentExpense[] {
+  return vault.payMonths.flatMap((payMonth) => payMonth.expenses
+    .filter((expense) => expense.creditCardId === creditCardId && expense.creditCardPaymentCycleEndDate && expense.creditCardPaymentCycleEndDate >= month.startDate && expense.creditCardPaymentCycleEndDate <= month.endDate)
+    .map((expense) => ({ expense, payMonth })));
+}
+
+export function creditCardPaymentTotal(vault: BudgetVault, month: PayMonth, creditCardId: string) {
+  return creditCardPaymentExpenses(vault, month, creditCardId).reduce((total, item) => total + item.expense.amountCents, 0);
+}
+
 export function addDays(start: string, days: number) { const d = new Date(`${start}T12:00:00`); d.setDate(d.getDate() + days); return localDateISO(d); }
 export function createEmptyVault(): BudgetVault { return { version: 3, settings: { defaultTargets: { ...defaultTargets } }, payMonths: [], recurringExpenses: [], creditCards: [] }; }
 export function dueDateForMonth(year: number, month: number, dueDay: number) {
@@ -85,19 +112,25 @@ export function dueDatesWithin(startDate: string, endDate: string, dueDay: numbe
   }
   return dates;
 }
-export function clonePayMonth(previous: PayMonth | undefined, startDate: string, targets: Record<Bucket, number>, recurringExpenses: RecurringExpense[]): PayMonth {
+export function clonePayMonth(previous: PayMonth | undefined, startDate: string, targets: Record<Bucket, number>, recurringExpenses: RecurringExpense[], creditCards: CreditCardPayment[] = []): PayMonth {
   const endDate = addDays(startDate, 27);
   const incomes = previous?.incomes.map((income) => ({ ...income, id: newId(), date: undefined })) ?? [];
-  const expenses = recurringExpenses.flatMap((expense) => expense.active ? dueDatesWithin(startDate, endDate, expense.dueDay).map((date) => ({ id: newId(), name: expense.name, amountCents: expense.amountCents, date, bucket: expense.bucket, templateId: expense.id, amountConfirmed: false, ...(expense.creditCardId ? { creditCardId: expense.creditCardId } : {}) })) : []);
+  const expenses = recurringExpenses.flatMap((expense) => expense.active ? dueDatesWithin(startDate, endDate, expense.dueDay).map((date) => {
+    const statementCloseDay = expense.creditCardId ? creditCards.find((card) => card.id === expense.creditCardId)?.statementCloseDay : undefined;
+    return { id: newId(), name: expense.name, amountCents: expense.amountCents, date, bucket: expense.bucket, templateId: expense.id, amountConfirmed: false, ...(expense.creditCardId ? { creditCardId: expense.creditCardId } : {}), ...(statementCloseDay ? { creditCardPaymentCycleEndDate: creditCardPaymentCycleEndDate(date, statementCloseDay) } : {}) };
+  }) : []);
   return { id: newId(), startDate, endDate, targetPercentages: { ...targets }, incomes, expenses };
 }
 /** Add missing occurrences to already-created pay-months after the source month. */
-export function backfillRecurringExpense(payMonths: PayMonth[], sourceMonthStartDate: string, expenses: RecurringExpense[]) {
+export function backfillRecurringExpense(payMonths: PayMonth[], sourceMonthStartDate: string, expenses: RecurringExpense[], creditCards: CreditCardPayment[] = []) {
   return payMonths.map((month) => {
     if (month.startDate <= sourceMonthStartDate) return month;
     const additions = expenses.flatMap((template) => template.active ? dueDatesWithin(month.startDate, month.endDate, template.dueDay)
       .filter((date) => !month.expenses.some((entry) => entry.templateId === template.id && entry.date === date))
-      .map((date) => ({ id: newId(), name: template.name, amountCents: template.amountCents, date, bucket: template.bucket, templateId: template.id, amountConfirmed: false, ...(template.creditCardId ? { creditCardId: template.creditCardId } : {}) })) : []);
+      .map((date) => {
+        const statementCloseDay = template.creditCardId ? creditCards.find((card) => card.id === template.creditCardId)?.statementCloseDay : undefined;
+        return { id: newId(), name: template.name, amountCents: template.amountCents, date, bucket: template.bucket, templateId: template.id, amountConfirmed: false, ...(template.creditCardId ? { creditCardId: template.creditCardId } : {}), ...(statementCloseDay ? { creditCardPaymentCycleEndDate: creditCardPaymentCycleEndDate(date, statementCloseDay) } : {}) };
+      }) : []);
     return additions.length ? { ...month, expenses: [...month.expenses, ...additions] } : month;
   });
 }

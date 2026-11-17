@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backfillRecurringExpense, clonePayMonth, createEmptyVault, creditCardExpenseTotal, creditCardExpenses, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, searchExpenses, todayISO, totals, upgradeVault, type BudgetVault, type LegacyBudgetVault } from "@/lib/budget/types";
+import { backfillRecurringExpense, clonePayMonth, createEmptyVault, creditCardExpenseTotal, creditCardExpenses, creditCardPaymentCycleEndDate, creditCardPaymentExpenses, creditCardPaymentTotal, dueDateForMonth, dueDatesWithin, expenseListGroups, futureExpenseTotal, searchExpenses, todayISO, totals, upgradeVault, type BudgetVault, type LegacyBudgetVault } from "@/lib/budget/types";
 
 describe("pay-month budgets", () => {
   it("uses the device's local calendar date for today", () => {
@@ -120,9 +120,9 @@ describe("pay-month budgets", () => {
 
   it("keeps credit card payment settings in a new encrypted vault", () => {
     const vault = createEmptyVault();
-    vault.creditCards?.push({ id: "visa", name: "Travel Visa", dueDay: 15 });
-    expect(vault.creditCards).toEqual([{ id: "visa", name: "Travel Visa", dueDay: 15 }]);
-    expect(dueDatesWithin("2026-08-14", "2026-09-10", vault.creditCards![0].dueDay)).toEqual(["2026-08-15"]);
+    vault.creditCards?.push({ id: "visa", name: "Travel Visa", statementCloseDay: 15 });
+    expect(vault.creditCards).toEqual([{ id: "visa", name: "Travel Visa", statementCloseDay: 15 }]);
+    expect(dueDatesWithin("2026-08-14", "2026-09-10", vault.creditCards![0].statementCloseDay!)).toEqual(["2026-08-15"]);
   });
 
   it("lists only the selected card’s expenses and total for the active pay-month", () => {
@@ -136,6 +136,23 @@ describe("pay-month budgets", () => {
     expect(creditCardExpenses(month, "travel").map((expense) => expense.name)).toEqual(["Flight", "Hotel"]);
     expect(creditCardExpenseTotal(month, "travel")).toBe(68000);
     expect(creditCardExpenseTotal(month, "cashback")).toBe(9800);
+  });
+
+  it("keeps card purchases in their spending pay-month and forecasts their full payment for the following billing cycle", () => {
+    const vault = createEmptyVault();
+    vault.creditCards?.push({ id: "travel", name: "Travel Visa", statementCloseDay: 15 });
+    const april = clonePayMonth(undefined, "2026-04-01", vault.settings.defaultTargets, []);
+    const may = clonePayMonth(april, "2026-04-29", vault.settings.defaultTargets, []);
+    const june = clonePayMonth(may, "2026-05-27", vault.settings.defaultTargets, []);
+    const beforeClose = { id: "hotel", name: "Hotel", amountCents: 22500, bucket: "wants" as const, date: "2026-04-10", creditCardId: "travel", creditCardPaymentCycleEndDate: creditCardPaymentCycleEndDate("2026-04-10", 15) };
+    const afterClose = { id: "flight", name: "Flight", amountCents: 45500, bucket: "wants" as const, date: "2026-04-20", creditCardId: "travel", creditCardPaymentCycleEndDate: creditCardPaymentCycleEndDate("2026-04-20", 15) };
+    april.expenses.push(beforeClose, afterClose); vault.payMonths.push(april, may, june);
+
+    expect(beforeClose.creditCardPaymentCycleEndDate).toBe("2026-05-15");
+    expect(afterClose.creditCardPaymentCycleEndDate).toBe("2026-06-15");
+    expect(creditCardExpenseTotal(april, "travel")).toBe(68000);
+    expect(creditCardPaymentTotal(vault, may, "travel")).toBe(22500);
+    expect(creditCardPaymentExpenses(vault, june, "travel").map(({ expense }) => expense.name)).toEqual(["Flight"]);
   });
 
   it("consolidates legacy entries and creates dated recurring expenses locally", () => {
